@@ -1,6 +1,7 @@
 package com.finplay.api.domain.market.feed;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -27,7 +28,7 @@ class BithumbFeedLifecycleTest {
 
 	@Test
 	void electLeaderStartsTheClientWhenNotLeaderAndLockIsAcquired() {
-		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock);
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 10_000L);
 		when(bithumbFeedLeaderLock.tryLock()).thenReturn(Optional.of("token-1"));
 
 		lifecycle.electLeader();
@@ -38,7 +39,7 @@ class BithumbFeedLifecycleTest {
 
 	@Test
 	void electLeaderDoesNothingWhenNotLeaderAndLockIsNotAcquired() {
-		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock);
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 10_000L);
 		when(bithumbFeedLeaderLock.tryLock()).thenReturn(Optional.empty());
 
 		lifecycle.electLeader();
@@ -48,7 +49,7 @@ class BithumbFeedLifecycleTest {
 
 	@Test
 	void electLeaderDoesNotPropagateWhenClientStartFailsSoTheScheduleIsNotBroken() {
-		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock);
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 10_000L);
 		when(bithumbFeedLeaderLock.tryLock()).thenReturn(Optional.of("token-1"));
 		doThrow(new RedisConnectionFailureException("Unable to connect to Redis")).when(bithumbFeedClient).start();
 
@@ -59,7 +60,7 @@ class BithumbFeedLifecycleTest {
 
 	@Test
 	void electLeaderUnlocksAndStaysFollowerWhenClientStartFailsSoTheLockIsNotHeldByADeadLeader() {
-		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock);
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 10_000L);
 		when(bithumbFeedLeaderLock.tryLock()).thenReturn(Optional.of("token-1"));
 		doThrow(new RedisConnectionFailureException("Unable to connect to Redis")).when(bithumbFeedClient).start();
 
@@ -71,7 +72,7 @@ class BithumbFeedLifecycleTest {
 
 	@Test
 	void electLeaderTriesToBecomeLeaderAgainAfterClientStartFails() {
-		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock);
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 10_000L);
 		when(bithumbFeedLeaderLock.tryLock()).thenReturn(Optional.of("token-1"), Optional.of("token-2"));
 		doThrow(new RedisConnectionFailureException("Unable to connect to Redis")).doNothing()
 			.when(bithumbFeedClient)
@@ -86,7 +87,7 @@ class BithumbFeedLifecycleTest {
 
 	@Test
 	void electLeaderRenewsInsteadOfRestartingWhenAlreadyLeaderAndRenewSucceeds() {
-		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock);
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 10_000L);
 		when(bithumbFeedLeaderLock.tryLock()).thenReturn(Optional.of("token-1"));
 		when(bithumbFeedLeaderLock.renew("token-1")).thenReturn(true);
 
@@ -100,7 +101,7 @@ class BithumbFeedLifecycleTest {
 
 	@Test
 	void electLeaderStopsAndStepsDownWhenAlreadyLeaderAndRenewFails() {
-		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock);
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 10_000L);
 		when(bithumbFeedLeaderLock.tryLock()).thenReturn(Optional.of("token-1"));
 		when(bithumbFeedLeaderLock.renew("token-1")).thenReturn(false);
 
@@ -112,7 +113,7 @@ class BithumbFeedLifecycleTest {
 
 	@Test
 	void electLeaderTriesToBecomeLeaderAgainAfterSteppingDown() {
-		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock);
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 10_000L);
 		when(bithumbFeedLeaderLock.tryLock()).thenReturn(Optional.of("token-1"), Optional.of("token-2"));
 		when(bithumbFeedLeaderLock.renew("token-1")).thenReturn(false);
 
@@ -125,7 +126,7 @@ class BithumbFeedLifecycleTest {
 
 	@Test
 	void stopFeedStopsTheClientAndUnlocksTheLockWhenCurrentlyLeader() {
-		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock);
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 10_000L);
 		when(bithumbFeedLeaderLock.tryLock()).thenReturn(Optional.of("token-1"));
 		lifecycle.electLeader();
 
@@ -136,8 +137,39 @@ class BithumbFeedLifecycleTest {
 	}
 
 	@Test
+	void validateLeaderScheduleConfigurationDoesNotThrowWhenTtlIsAtLeastTwiceTheElectionInterval() {
+		when(bithumbFeedLeaderLock.lockTtlSeconds()).thenReturn(30L);
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 10_000L);
+
+		assertThatCode(lifecycle::validateLeaderScheduleConfiguration).doesNotThrowAnyException();
+	}
+
+	@Test
+	void validateLeaderScheduleConfigurationThrowsWhenTtlIsLessThanTwiceTheElectionInterval() {
+		when(bithumbFeedLeaderLock.lockTtlSeconds()).thenReturn(15L);
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 10_000L);
+
+		assertThatIllegalStateException().isThrownBy(lifecycle::validateLeaderScheduleConfiguration);
+	}
+
+	@Test
+	void validateLeaderScheduleConfigurationThrowsWhenElectionIntervalIsNotPositive() {
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 0L);
+
+		assertThatIllegalStateException().isThrownBy(lifecycle::validateLeaderScheduleConfiguration);
+	}
+
+	@Test
+	void validateLeaderScheduleConfigurationThrowsWhenLockTtlIsNotPositive() {
+		when(bithumbFeedLeaderLock.lockTtlSeconds()).thenReturn(0L);
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 10_000L);
+
+		assertThatIllegalStateException().isThrownBy(lifecycle::validateLeaderScheduleConfiguration);
+	}
+
+	@Test
 	void stopFeedDoesNothingWhenNeverBecameLeader() {
-		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock);
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 10_000L);
 
 		lifecycle.stopFeed();
 

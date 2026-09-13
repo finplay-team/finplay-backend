@@ -33,6 +33,10 @@ public class BithumbFeedLeaderLock {
 		return redisLock.renew(LOCK_KEY, token, lockTtl);
 	}
 
+	public long lockTtlSeconds() {
+		return lockTtl.getSeconds();
+	}
+
 	public void unlock(String token) {
 		if (redisLock.unlock(LOCK_KEY, token) == RedisLock.UnlockResult.NOT_HELD) {
 			log.warn(

@@ -2,6 +2,7 @@ package com.finplay.api.domain.market.feed;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -11,8 +12,14 @@ class BithumbFeedLifecycleConditionalTest {
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
 		.withBean(BithumbFeedClient.class, () -> mock(BithumbFeedClient.class))
-		.withBean(BithumbFeedLeaderLock.class, () -> mock(BithumbFeedLeaderLock.class))
+		.withBean(BithumbFeedLeaderLock.class, BithumbFeedLifecycleConditionalTest::mockLeaderLockWithValidTtl)
 		.withUserConfiguration(BithumbFeedLifecycle.class, BithumbFeedImmediateLifecycle.class);
+
+	private static BithumbFeedLeaderLock mockLeaderLockWithValidTtl() {
+		BithumbFeedLeaderLock leaderLock = mock(BithumbFeedLeaderLock.class);
+		when(leaderLock.lockTtlSeconds()).thenReturn(30L);
+		return leaderLock;
+	}
 
 	@Test
 	@DisplayName("prod 프로필이면 리더 선출 클래스만 뜨고 즉시시작 클래스는 뜨지 않는다")
