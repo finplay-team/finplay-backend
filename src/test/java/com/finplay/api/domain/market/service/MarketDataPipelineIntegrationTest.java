@@ -44,6 +44,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -99,6 +100,9 @@ class MarketDataPipelineIntegrationTest {
 
 	@Autowired
 	private TransactionTemplate transactionTemplate;
+
+	@Autowired
+	private StringRedisTemplate redisTemplate;
 
 	@Autowired
 	private BusinessDayCalendar businessDayCalendar;
@@ -225,6 +229,10 @@ class MarketDataPipelineIntegrationTest {
 				LocalDateTime.now()));
 	}
 
+	private static String replayLockKey(LocalDate serviceDate) {
+		return "market:stock-replay-session:lock:" + serviceDate;
+	}
+
 	private Account createAccount(User user) {
 		return accountRepository.saveAndFlush(
 			Account.create(user, Market.STOCK, LocalDateTime.now()));
@@ -292,6 +300,7 @@ class MarketDataPipelineIntegrationTest {
 		assertThat(afterRestart.getPreparationStatus()).isEqualTo(PreparationStatus.READY);
 		assertThat(afterRestart.getSourceTradingDate()).isEqualTo(TD_A);
 		assertThat(afterRestart.getResolvedAt()).isEqualTo(firstResolvedAt);
+		assertThat(redisTemplate.hasKey(replayLockKey(SD_A))).isFalse();
 
 		assertThat(afterRestart.getPreparationStatus()).isEqualTo(PreparationStatus.READY);
 		assertThat(stockPriceProvider.getMarketStatus()).isEqualTo(StockMarketStatus.OPEN);
