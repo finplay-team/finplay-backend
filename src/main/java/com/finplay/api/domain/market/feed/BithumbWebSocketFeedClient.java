@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
@@ -44,23 +45,28 @@ public class BithumbWebSocketFeedClient extends TextWebSocketHandler implements 
 	private final CryptoCandleStore candleStore;
 	private final ObjectMapper objectMapper;
 	private final StandardWebSocketClient webSocketClient;
-	private final ScheduledExecutorService reconnectExecutor;
+	private final Supplier<ScheduledExecutorService> reconnectExecutorFactory;
 	private final Clock clock;
 
 	private volatile boolean running;
 	private volatile WebSocketSession session;
 	private volatile long reconnectDelaySeconds = RECONNECT_DELAY_MIN_SECONDS;
+	private volatile ScheduledExecutorService reconnectExecutor;
 
 	@Override
 	public void start() {
 		running = true;
+		reconnectExecutor = reconnectExecutorFactory.get();
 		connect();
 	}
 
 	@Override
 	public void stop() {
 		running = false;
-		reconnectExecutor.shutdownNow();
+		ScheduledExecutorService executor = reconnectExecutor;
+		if (executor != null) {
+			executor.shutdownNow();
+		}
 		closeQuietly(session, CloseStatus.NORMAL);
 		session = null;
 		try {
@@ -123,11 +129,12 @@ public class BithumbWebSocketFeedClient extends TextWebSocketHandler implements 
 	}
 
 	private void scheduleReconnect() {
-		if (!running || reconnectExecutor.isShutdown()) {
+		ScheduledExecutorService executor = reconnectExecutor;
+		if (!running || executor == null || executor.isShutdown()) {
 			return;
 		}
 		long delay = reconnectDelaySeconds;
-		reconnectExecutor.schedule(this::connect, delay, TimeUnit.SECONDS);
+		executor.schedule(this::connect, delay, TimeUnit.SECONDS);
 		reconnectDelaySeconds = Math.min(delay * 2, RECONNECT_DELAY_MAX_SECONDS);
 	}
 

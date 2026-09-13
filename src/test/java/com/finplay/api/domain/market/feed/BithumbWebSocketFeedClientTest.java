@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -23,6 +24,7 @@ import java.net.URI;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
@@ -71,7 +73,7 @@ class BithumbWebSocketFeedClientTest {
 	@BeforeEach
 	void setUp() {
 		client = new BithumbWebSocketFeedClient(
-			instrumentRepository, priceStore, candleStore, new ObjectMapper(), webSocketClient, reconnectExecutor,
+			instrumentRepository, priceStore, candleStore, new ObjectMapper(), webSocketClient, () -> reconnectExecutor,
 			clock);
 	}
 
@@ -329,6 +331,26 @@ class BithumbWebSocketFeedClientTest {
 		verify(priceStore, times(1)).saveConnectionStatus(FeedConnectionStatus.DISCONNECTED);
 		verify(session, times(1)).close(any(CloseStatus.class));
 		verify(reconnectExecutor, times(1)).schedule(any(Runnable.class), eq(5L), eq(TimeUnit.SECONDS));
+	}
+
+	@Test
+	@DisplayName("stop() 이후 다시 start()하면 새 재연결 실행기를 받아 재연결 예약이 계속 동작한다 (이슈 #564 재선출 시나리오)")
+	void startAfterStopObtainsAFreshReconnectExecutorSoReconnectSchedulingStillWorks() {
+		ScheduledExecutorService firstExecutor = mock(ScheduledExecutorService.class);
+		ScheduledExecutorService secondExecutor = mock(ScheduledExecutorService.class);
+		Iterator<ScheduledExecutorService> executors = List.of(firstExecutor, secondExecutor).iterator();
+		BithumbWebSocketFeedClient reElectableClient = new BithumbWebSocketFeedClient(
+			instrumentRepository, priceStore, candleStore, new ObjectMapper(), webSocketClient, executors::next,
+			clock);
+		stubSuccessfulConnectAttempt();
+
+		reElectableClient.start();
+		reElectableClient.stop();
+		reElectableClient.start();
+		reElectableClient.afterConnectionClosed(session, CloseStatus.NORMAL);
+
+		verify(firstExecutor, times(1)).shutdownNow();
+		verify(secondExecutor, times(1)).schedule(any(Runnable.class), eq(5L), eq(TimeUnit.SECONDS));
 	}
 
 	private void stubSuccessfulConnectAttempt() {
