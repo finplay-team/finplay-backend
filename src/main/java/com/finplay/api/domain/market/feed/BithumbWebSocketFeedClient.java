@@ -209,11 +209,26 @@ public class BithumbWebSocketFeedClient implements BithumbFeedClient {
 
 		@Override
 		public void afterConnectionEstablished(WebSocketSession newSession) {
-			List<String> plainSymbols = instrumentRepository
-				.findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(Market.CRYPTO)
-				.stream()
-				.map(Instrument::getSymbol)
-				.toList();
+			List<String> plainSymbols;
+			try {
+				plainSymbols = instrumentRepository
+					.findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(Market.CRYPTO)
+					.stream()
+					.map(Instrument::getSymbol)
+					.toList();
+			} catch (Exception ex) {
+				log.warn("빗썸 구독 대상 종목 조회에 실패해 연결을 재시도합니다.", ex);
+				synchronized (lifecycleLock) {
+					if (!isCurrent()) {
+						closeQuietly(newSession, CloseStatus.NORMAL);
+						return;
+					}
+					closeQuietly(newSession, CloseStatus.SERVER_ERROR);
+					onDisconnected();
+					scheduleReconnect();
+				}
+				return;
+			}
 			synchronized (lifecycleLock) {
 				if (!isCurrent()) {
 					closeQuietly(newSession, CloseStatus.NORMAL);

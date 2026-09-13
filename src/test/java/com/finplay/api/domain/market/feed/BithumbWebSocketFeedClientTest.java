@@ -360,6 +360,42 @@ class BithumbWebSocketFeedClientTest {
 	}
 
 	@Test
+	@DisplayName("구독 대상 종목 조회가 실패해도 연결상태가 DISCONNECTED로 기록되고 재연결이 예약된다 (이슈 #564 재리뷰 권장사항 — "
+		+ "종목 조회가 lifecycleLock 밖으로 나가며 subscribe()의 기존 try/catch 범위를 벗어난 것을 별도로 흡수한다)")
+	void instrumentQueryFailureMarksDisconnectedAndSchedulesReconnect() throws Exception {
+		when(instrumentRepository.findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(Market.CRYPTO))
+			.thenThrow(new RuntimeException("DB 장애"));
+		when(session.isOpen()).thenReturn(true);
+		BithumbWebSocketFeedClient.ConnectionSession handler = startAndGetHandler();
+
+		handler.afterConnectionEstablished(session);
+
+		verify(bithumbFeedLeaderLock, times(1))
+			.writeUnlessSuperseded(LEADER_TOKEN, STATUS_KEY, FeedConnectionStatus.DISCONNECTED.name());
+		verify(session, times(1)).close(any(CloseStatus.class));
+		verify(session, never()).sendMessage(any());
+		verify(reconnectExecutor, times(1)).schedule(any(Runnable.class), eq(5L), eq(TimeUnit.SECONDS));
+	}
+
+	@Test
+	@DisplayName("stop() 이후 뒤늦게 도착한 이전 세대의 연결 성공 콜백은 종목 조회가 실패해도 상태를 기록하지 않는다 "
+		+ "(이슈 #564 재리뷰 권장사항 — 종목 조회 실패 경로도 세대 검증을 거친다)")
+	void staleConnectionEstablishedAfterStopIsIgnoredEvenWhenInstrumentQueryFails() throws Exception {
+		BithumbWebSocketFeedClient.ConnectionSession staleHandler = startAndGetHandler();
+		when(instrumentRepository.findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(Market.CRYPTO))
+			.thenThrow(new RuntimeException("DB 장애"));
+		when(session.isOpen()).thenReturn(true);
+
+		client.stop();
+		clearInvocations(bithumbFeedLeaderLock, reconnectExecutor);
+		staleHandler.afterConnectionEstablished(session);
+
+		verify(bithumbFeedLeaderLock, never()).writeUnlessSuperseded(any(), any(), any());
+		verify(reconnectExecutor, never()).schedule(any(Runnable.class), anyLong(), any(TimeUnit.class));
+		verify(session, times(1)).close(CloseStatus.NORMAL);
+	}
+
+	@Test
 	@DisplayName("stop() 이후 다시 start()하면 새 재연결 실행기를 받아 재연결 예약이 계속 동작한다 (이슈 #564 재선출 시나리오)")
 	void startAfterStopObtainsAFreshReconnectExecutorSoReconnectSchedulingStillWorks() {
 		ScheduledExecutorService firstExecutor = mock(ScheduledExecutorService.class);
