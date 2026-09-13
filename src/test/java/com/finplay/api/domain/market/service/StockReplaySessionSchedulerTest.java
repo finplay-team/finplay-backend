@@ -1,7 +1,10 @@
 package com.finplay.api.domain.market.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -19,10 +22,14 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.TransactionTemplate;
 
 class StockReplaySessionSchedulerTest {
 
@@ -35,15 +42,23 @@ class StockReplaySessionSchedulerTest {
 	private final StockReplaySessionRepository stockReplaySessionRepository = mock(StockReplaySessionRepository.class);
 	private final MarketDataImportRepository marketDataImportRepository = mock(MarketDataImportRepository.class);
 	private final StockCandleRepository stockCandleRepository = mock(StockCandleRepository.class);
+	private final StockReplaySessionLock stockReplaySessionLock = mock(StockReplaySessionLock.class);
+	private final TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
 
 	private static Clock fixedClock(LocalDateTime dateTime) {
 		return Clock.fixed(dateTime.atZone(KST).toInstant(), KST);
 	}
 
 	private StockReplaySessionScheduler newScheduler(Clock clock) {
+		when(stockReplaySessionLock.tryLock(any(LocalDate.class))).thenReturn(Optional.of("lock-token"));
+		doAnswer(invocation -> {
+			Consumer<TransactionStatus> action = invocation.getArgument(0);
+			action.accept(mock(TransactionStatus.class));
+			return null;
+		}).when(transactionTemplate).executeWithoutResult(any());
 		return new StockReplaySessionScheduler(
 			stockReplaySessionRepository, marketDataImportRepository, stockCandleRepository, clock,
-			new BusinessDayCalendar());
+			new BusinessDayCalendar(), stockReplaySessionLock, transactionTemplate);
 	}
 
 	private static MarketDataImport successImport(LocalDate tradingDate) {
@@ -81,6 +96,54 @@ class StockReplaySessionSchedulerTest {
 		assertThat(session.getSourceTradingDate()).isEqualTo(PREVIOUS_BUSINESS_DAY);
 		assertThat(session.getResolvedAt()).isEqualTo(WEEKDAY_RUN_AT);
 		assertThat(session.getFailureReason()).isNull();
+		verify(stockReplaySessionLock).unlock(SERVICE_DATE, "lock-token");
+	}
+
+	@Test
+	void resolveTodaySessionReturnsWithoutRepositoryAccessWhenLockCannotBeAcquired() {
+		StockReplaySessionScheduler scheduler = newScheduler(fixedClock(WEEKDAY_RUN_AT));
+		when(stockReplaySessionLock.tryLock(SERVICE_DATE)).thenReturn(Optional.empty());
+
+		scheduler.resolveTodaySession();
+
+		verifyNoInteractions(stockReplaySessionRepository);
+		verifyNoInteractions(marketDataImportRepository);
+		verifyNoInteractions(stockCandleRepository);
+		verify(stockReplaySessionLock, never()).unlock(any(LocalDate.class), any());
+	}
+
+	@Test
+	void resolveTodaySessionUnlocksAndPropagatesWhenTransactionFails() {
+		StockReplaySessionScheduler scheduler = newScheduler(fixedClock(WEEKDAY_RUN_AT));
+		IllegalStateException failure = new IllegalStateException("transaction failed");
+		doThrow(failure).when(transactionTemplate).executeWithoutResult(any());
+
+		assertThatThrownBy(scheduler::resolveTodaySession).isSameAs(failure);
+		verify(stockReplaySessionLock).unlock(SERVICE_DATE, "lock-token");
+	}
+
+	@Test
+	void resolveTodaySessionUnlocksAfterTransactionExecutionReturns() {
+		StockReplaySessionScheduler scheduler = newScheduler(fixedClock(WEEKDAY_RUN_AT));
+		List<String> events = new ArrayList<>();
+		StockReplaySession alreadyReady = StockReplaySession.ready(
+			SERVICE_DATE, PREVIOUS_BUSINESS_DAY, WEEKDAY_RUN_AT, LocalDateTime.now());
+		when(stockReplaySessionRepository.findByServiceDate(SERVICE_DATE)).thenReturn(Optional.of(alreadyReady));
+		doAnswer(invocation -> {
+			events.add("transaction-start");
+			Consumer<TransactionStatus> action = invocation.getArgument(0);
+			action.accept(mock(TransactionStatus.class));
+			events.add("transaction-return");
+			return null;
+		}).when(transactionTemplate).executeWithoutResult(any());
+		doAnswer(invocation -> {
+			events.add("unlock");
+			return null;
+		}).when(stockReplaySessionLock).unlock(SERVICE_DATE, "lock-token");
+
+		scheduler.resolveTodaySession();
+
+		assertThat(events).containsExactly("transaction-start", "transaction-return", "unlock");
 	}
 
 	@Test
