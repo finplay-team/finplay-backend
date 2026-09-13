@@ -14,7 +14,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 @RequiredArgsConstructor
@@ -29,32 +29,45 @@ public class StockReplaySessionScheduler {
 	private final StockCandleRepository stockCandleRepository;
 	private final Clock clock;
 	private final BusinessDayCalendar businessDayCalendar;
+	private final StockReplaySessionLock stockReplaySessionLock;
+	private final TransactionTemplate transactionTemplate;
 
 	@Scheduled(cron = "0 40 8 * * MON-FRI", zone = "Asia/Seoul")
-	@Transactional
 	public void resolveTodaySession() {
 		LocalDate serviceDate = LocalDate.now(clock);
-		LocalDateTime resolvedAt = LocalDateTime.now(clock);
-
-		StockReplaySession session = stockReplaySessionRepository
-			.findByServiceDate(serviceDate)
-			.orElseGet(() -> stockReplaySessionRepository.save(
-				StockReplaySession.preparing(serviceDate, null, resolvedAt)));
-
-		if (session.getPreparationStatus() != PreparationStatus.PREPARING) {
-			log.info("서비스 날짜 {}의 재생세션이 이미 {} 상태입니다 — 재확정하지 않습니다.", serviceDate,
-				session.getPreparationStatus());
+		Optional<String> lockToken = stockReplaySessionLock.tryLock(serviceDate);
+		if (lockToken.isEmpty()) {
+			log.info(
+				"주식 재생세션 확정 락을 얻지 못해 이번 실행을 건너뜁니다(다른 인스턴스가 처리 중) - serviceDate={}",
+				serviceDate);
 			return;
 		}
+		try {
+			transactionTemplate.executeWithoutResult(status -> {
+				LocalDateTime resolvedAt = LocalDateTime.now(clock);
+				StockReplaySession session = stockReplaySessionRepository
+					.findByServiceDate(serviceDate)
+					.orElseGet(() -> stockReplaySessionRepository.save(
+						StockReplaySession.preparing(serviceDate, null, resolvedAt)));
 
-		Optional<LocalDate> validatedTradingDate = resolveLatestValidatedTradingDate(serviceDate);
-		if (validatedTradingDate.isPresent()) {
-			session.resolveReady(validatedTradingDate.get(), resolvedAt);
-			log.info("재생세션이 READY로 확정되었습니다 (serviceDate={}, sourceTradingDate={})", serviceDate,
-				validatedTradingDate.get());
-		} else {
-			session.resolveFailed(null, resolvedAt, NO_VALIDATED_DATA_FAILURE_REASON);
-			log.warn("검증 완료된 거래일을 찾지 못해 재생세션이 FAILED로 확정되었습니다 (serviceDate={})", serviceDate);
+				if (session.getPreparationStatus() != PreparationStatus.PREPARING) {
+					log.info("서비스 날짜 {}의 재생세션이 이미 {} 상태입니다 — 재확정하지 않습니다.", serviceDate,
+						session.getPreparationStatus());
+					return;
+				}
+
+				Optional<LocalDate> validatedTradingDate = resolveLatestValidatedTradingDate(serviceDate);
+				if (validatedTradingDate.isPresent()) {
+					session.resolveReady(validatedTradingDate.get(), resolvedAt);
+					log.info("재생세션이 READY로 확정되었습니다 (serviceDate={}, sourceTradingDate={})", serviceDate,
+						validatedTradingDate.get());
+				} else {
+					session.resolveFailed(null, resolvedAt, NO_VALIDATED_DATA_FAILURE_REASON);
+					log.warn("검증 완료된 거래일을 찾지 못해 재생세션이 FAILED로 확정되었습니다 (serviceDate={})", serviceDate);
+				}
+			});
+		} finally {
+			stockReplaySessionLock.unlock(serviceDate, lockToken.get());
 		}
 	}
 
