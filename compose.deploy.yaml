@@ -1,14 +1,17 @@
-# 배포용 스택 (EC2 수동 배포 — ADR-0021 이후 정상 경로는 파이프라인이며 이 스택은 폴백이다).
-# 프론트는 S3에서 독립 배포되므로 nginx 없이 앱만 띄운다 (ADR-0022 — 이슈 #108 A안·동일 오리진 서빙 폐기).
+# 배포용 스택 — 웹 2대(롤링 배포)·스케줄러 1대 각 인스턴스에서 컨테이너 1개씩 띄운다.
+# 프론트는 S3+CloudFront에서 독립 배포되므로 nginx 없이 앱만 띄운다 (ADR-0022 — 이슈 #108 A안·동일 오리진 서빙 폐기).
 # 루트 compose.yaml은 로컬 개발 전용(spring-boot-docker-compose가 bootRun에서 자동 기동)이므로 건드리지 않는다.
-# 실행: docker compose -f compose.deploy.yaml up -d --build   (같은 디렉터리의 .env를 읽는다)
+# 2026-09-14: EC2에서 소스를 빌드하던 build: 블록을 걷어내고 ECR이 관리하는 이미지를 그대로 pull하는
+# 방식으로 바꿨다(ADR-0021 §결정 4와 같은 이유 — blue/green이 서로 다른 빌드가 되는 문제를 다중 인스턴스
+# 롤링 배포에서도 피해야 한다). 실행: docker compose -f compose.deploy.yaml up -d   (같은 디렉터리의 .env를 읽는다)
 name: finplay-deploy
 
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ${APP_IMAGE}
+    # 배포 스크립트가 docker inspect·docker logs로 이 이름을 그대로 지목한다
+    # (compose.bluegreen.yaml의 finplay-app-blue/green과 같은 이유).
+    container_name: finplay-app
     # 시크릿·외부 연동 키는 .env에서 그대로 주입한다 (.env.example 참조). 값은 파일에 적지 않는다.
     # 뉴스·공시 수집과 AI 서술이 쓰는 NAVER_SEARCH_CLIENT_ID·NAVER_SEARCH_CLIENT_SECRET·DART_API_KEY·
     # OPENAI_API_KEY도 이 경로로만 들어온다 (spec 012 FEED-001). 아래 environment 블록에 다시 적지 않는다 —
@@ -32,3 +35,17 @@ services:
     ports:
       - "8080:8080"
     restart: unless-stopped
+    # 전환 순간 진행 중이던 요청을 끊지 않기 위한 graceful shutdown 여유 시간이다 —
+    # application.yml의 server.shutdown: graceful 타임아웃보다 길게 잡는다(compose.bluegreen.yaml과 동일 원칙).
+    stop_grace_period: 30s
+    # 컨테이너 stdout/stderr을 CloudWatch Logs로 직접 보낸다 — 로그 그룹은 인스턴스마다 다르므로
+    # (web-1/web-2/scheduler) .env의 AWSLOGS_GROUP으로 주입한다(refresh-env.sh가 매번 다시 써 넣음).
+    # EC2 인스턴스 역할(CloudWatchAgentServerPolicy)이 이미 logs:CreateLogStream·PutLogEvents 권한을 갖고
+    # 있어 별도 IAM 정책이 필요 없다.
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ap-northeast-2
+        awslogs-group: ${AWSLOGS_GROUP}
+        awslogs-stream: app
+        awslogs-create-group: "false"
