@@ -106,9 +106,19 @@ resource "aws_cloudwatch_metric_alarm" "rds_connections" {
 
 # ── ElastiCache ────────────────────────────────────────────────────
 # 노드(멤버 클러스터) 단위로 발행되는 메트릭이라 복제본 포함 2개 노드 각각에 건다.
+#
+# member_clusters는 리소스가 실제로 생성된 뒤에만 알 수 있는 값이라(apply 시점 계산),
+# 아직 없는 리소스의 for_each 키로 쓸 수 없다(terraform plan 실측 오류: "known only after
+# apply"). AWS가 멤버 클러스터를 "<replication_group_id>-0XX"로 순번 명명하는 규칙이
+# 문서화돼 있어, 그 이름을 미리 계산해 정적인 for_each 키로 쓴다.
+locals {
+  elasticache_member_cluster_ids = [
+    for i in range(2) : format("%s-cache-%03d", var.project_name, i + 1)
+  ]
+}
 
 resource "aws_cloudwatch_metric_alarm" "elasticache_cpu" {
-  for_each = toset(aws_elasticache_replication_group.main.member_clusters)
+  for_each = toset(local.elasticache_member_cluster_ids)
 
   alarm_name          = "${each.value}-cpu-high"
   namespace           = "AWS/ElastiCache"
@@ -123,7 +133,7 @@ resource "aws_cloudwatch_metric_alarm" "elasticache_cpu" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "elasticache_memory" {
-  for_each = toset(aws_elasticache_replication_group.main.member_clusters)
+  for_each = toset(local.elasticache_member_cluster_ids)
 
   alarm_name          = "${each.value}-memory-used-high"
   namespace           = "AWS/ElastiCache"
@@ -138,7 +148,7 @@ resource "aws_cloudwatch_metric_alarm" "elasticache_memory" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "elasticache_evictions" {
-  for_each = toset(aws_elasticache_replication_group.main.member_clusters)
+  for_each = toset(local.elasticache_member_cluster_ids)
 
   alarm_name          = "${each.value}-evictions"
   namespace           = "AWS/ElastiCache"
