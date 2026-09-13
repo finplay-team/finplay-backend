@@ -11,6 +11,7 @@ import org.springframework.core.env.Environment;
 class MarketStockPropertiesTest {
 
 	private static final String SPEC_COLLECT_LOCK_TTL_SECONDS = "600";
+	private static final String SPEC_REPLAY_SESSION_LOCK_TTL_SECONDS = "600";
 
 	private static final String SPEC_RETRY_CRON = "0 15,30,45 8-10 * * MON-FRI";
 
@@ -39,6 +40,29 @@ class MarketStockPropertiesTest {
 			MarketStockProperties properties = context.getBean(MarketStockProperties.class);
 			assertThat(properties.collectLockTtlSeconds())
 				.isEqualTo(Integer.parseInt(SPEC_COLLECT_LOCK_TTL_SECONDS));
+		});
+	}
+
+	@Test
+	@DisplayName("application.yml에 market.stock.replay-session-lock-ttl-seconds가 확정값(600)으로 실제 존재한다")
+	void applicationYmlDeclaresTheReplaySessionLockTtlSecondsKey() {
+		contextRunner.run(context -> {
+			Environment environment = context.getEnvironment();
+
+			assertThat(environment.getProperty("market.stock.replay-session-lock-ttl-seconds"))
+				.isEqualTo(SPEC_REPLAY_SESSION_LOCK_TTL_SECONDS);
+		});
+	}
+
+	@Test
+	@DisplayName("application.yml을 얹은 컨텍스트의 빈이 record 기본값과 같은 재생세션 락 TTL 값을 갖는다")
+	void boundBeanMatchesDefaultValueForReplaySessionLockWhenApplicationYmlIsApplied() {
+		contextRunner.run(context -> {
+			assertThat(context).hasNotFailed();
+
+			MarketStockProperties properties = context.getBean(MarketStockProperties.class);
+			assertThat(properties.replaySessionLockTtlSeconds())
+				.isEqualTo(Integer.parseInt(SPEC_REPLAY_SESSION_LOCK_TTL_SECONDS));
 		});
 	}
 
@@ -73,6 +97,7 @@ class MarketStockPropertiesTest {
 
 				MarketStockProperties properties = context.getBean(MarketStockProperties.class);
 				assertThat(properties.collectLockTtlSeconds()).isEqualTo(600);
+				assertThat(properties.replaySessionLockTtlSeconds()).isEqualTo(600);
 				assertThat(properties.retryCron()).isEqualTo(SPEC_RETRY_CRON);
 			});
 	}
