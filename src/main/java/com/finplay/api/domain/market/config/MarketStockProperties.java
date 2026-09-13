@@ -7,6 +7,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 public record MarketStockProperties(
 	@DefaultValue("600")
 	int collectLockTtlSeconds,
+	@DefaultValue("600")
+	int replaySessionLockTtlSeconds,
 	@DefaultValue("0 15,30,45 8-10 * * MON-FRI")
 	String retryCron) {
 }

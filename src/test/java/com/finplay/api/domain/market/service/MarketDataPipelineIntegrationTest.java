@@ -45,6 +45,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest
 @Import({TestcontainersConfiguration.class, TestClockConfig.class})
@@ -92,6 +93,12 @@ class MarketDataPipelineIntegrationTest {
 
 	@Autowired
 	private StockReplaySessionScheduler stockReplaySessionScheduler;
+
+	@Autowired
+	private StockReplaySessionLock stockReplaySessionLock;
+
+	@Autowired
+	private TransactionTemplate transactionTemplate;
 
 	@Autowired
 	private BusinessDayCalendar businessDayCalendar;
@@ -193,7 +200,7 @@ class MarketDataPipelineIntegrationTest {
 	private StockReplaySessionScheduler freshSchedulerInstanceAfterRestart() {
 		return new StockReplaySessionScheduler(
 			stockReplaySessionRepository, marketDataImportRepository, stockCandleRepository, clock,
-			businessDayCalendar);
+			businessDayCalendar, stockReplaySessionLock, transactionTemplate);
 	}
 
 	private static final class ThrowingKisHistoricalCandleClient implements KisHistoricalCandleClient {
