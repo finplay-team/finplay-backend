@@ -1,6 +1,7 @@
 package com.finplay.api.domain.market.feed;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -8,7 +9,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.finplay.api.TestcontainersConfiguration;
-import com.finplay.api.domain.market.store.PriceStore;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -35,9 +35,6 @@ class BithumbFeedLeaderLockConcurrencyIntegrationTest {
 	private BithumbFeedLeaderLock bithumbFeedLeaderLock;
 
 	@Autowired
-	private PriceStore priceStore;
-
-	@Autowired
 	private StringRedisTemplate redisTemplate;
 
 	@BeforeEach
@@ -57,10 +54,10 @@ class BithumbFeedLeaderLockConcurrencyIntegrationTest {
 		AtomicInteger startCount = new AtomicInteger();
 		BithumbFeedClient clientA = mock(BithumbFeedClient.class);
 		BithumbFeedClient clientB = mock(BithumbFeedClient.class);
-		doAnswer(invocation -> startCount.incrementAndGet()).when(clientA).start();
-		doAnswer(invocation -> startCount.incrementAndGet()).when(clientB).start();
-		BithumbFeedLifecycle instanceA = new BithumbFeedLifecycle(clientA, bithumbFeedLeaderLock, priceStore, 10_000L);
-		BithumbFeedLifecycle instanceB = new BithumbFeedLifecycle(clientB, bithumbFeedLeaderLock, priceStore, 10_000L);
+		doAnswer(invocation -> startCount.incrementAndGet()).when(clientA).start(any());
+		doAnswer(invocation -> startCount.incrementAndGet()).when(clientB).start(any());
+		BithumbFeedLifecycle instanceA = new BithumbFeedLifecycle(clientA, bithumbFeedLeaderLock, 10_000L);
+		BithumbFeedLifecycle instanceB = new BithumbFeedLifecycle(clientB, bithumbFeedLeaderLock, 10_000L);
 
 		runConcurrently(instanceA::electLeader, instanceB::electLeader);
 
@@ -74,19 +71,19 @@ class BithumbFeedLeaderLockConcurrencyIntegrationTest {
 	void followerBecomesLeaderImmediatelyAfterTheLeaderUnlocks() {
 		BithumbFeedClient clientA = mock(BithumbFeedClient.class);
 		BithumbFeedClient clientB = mock(BithumbFeedClient.class);
-		BithumbFeedLifecycle instanceA = new BithumbFeedLifecycle(clientA, bithumbFeedLeaderLock, priceStore, 10_000L);
-		BithumbFeedLifecycle instanceB = new BithumbFeedLifecycle(clientB, bithumbFeedLeaderLock, priceStore, 10_000L);
+		BithumbFeedLifecycle instanceA = new BithumbFeedLifecycle(clientA, bithumbFeedLeaderLock, 10_000L);
+		BithumbFeedLifecycle instanceB = new BithumbFeedLifecycle(clientB, bithumbFeedLeaderLock, 10_000L);
 
 		instanceA.electLeader();
-		verify(clientA, times(1)).start();
+		verify(clientA, times(1)).start(any());
 		instanceB.electLeader();
-		verify(clientB, never()).start();
+		verify(clientB, never()).start(any());
 
 		instanceA.stopFeed();
 		verify(clientA, times(1)).stop();
 
 		instanceB.electLeader();
-		verify(clientB, times(1)).start();
+		verify(clientB, times(1)).start(any());
 	}
 
 	private void runConcurrently(ThrowingRunnable actionA, ThrowingRunnable actionB) throws Exception {

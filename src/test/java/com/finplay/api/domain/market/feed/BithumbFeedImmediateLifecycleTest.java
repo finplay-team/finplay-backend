@@ -1,6 +1,7 @@
 package com.finplay.api.domain.market.feed;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -24,7 +25,7 @@ class BithumbFeedImmediateLifecycleTest {
 
 		lifecycle.startFeed();
 
-		verify(bithumbFeedClient, times(1)).start();
+		verify(bithumbFeedClient, times(1)).start(any());
 		verifyNoMoreInteractions(bithumbFeedClient);
 	}
 
@@ -33,11 +34,11 @@ class BithumbFeedImmediateLifecycleTest {
 		BithumbFeedImmediateLifecycle lifecycle = new BithumbFeedImmediateLifecycle(bithumbFeedClient);
 		doThrow(new RedisConnectionFailureException("Unable to connect to Redis"))
 			.when(bithumbFeedClient)
-			.start();
+			.start(any());
 
 		assertThatCode(lifecycle::startFeed).doesNotThrowAnyException();
 
-		verify(bithumbFeedClient, times(1)).start();
+		verify(bithumbFeedClient, times(1)).start(any());
 	}
 
 	@Test

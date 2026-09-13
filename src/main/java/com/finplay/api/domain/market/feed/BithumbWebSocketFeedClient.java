@@ -43,6 +43,7 @@ public class BithumbWebSocketFeedClient implements BithumbFeedClient {
 	private final InstrumentRepository instrumentRepository;
 	private final PriceStore priceStore;
 	private final CryptoCandleStore candleStore;
+	private final BithumbFeedLeaderLock bithumbFeedLeaderLock;
 	private final ObjectMapper objectMapper;
 	private final StandardWebSocketClient webSocketClient;
 	private final Supplier<ScheduledExecutorService> reconnectExecutorFactory;
@@ -53,12 +54,14 @@ public class BithumbWebSocketFeedClient implements BithumbFeedClient {
 	private volatile boolean running;
 	private volatile ScheduledExecutorService reconnectExecutor;
 	private volatile ConnectionSession activeConnection;
+	private volatile String currentLeaderToken;
 
 	@Override
-	public void start() {
+	public void start(String leaderToken) {
 		ConnectionSession newConnection;
 		synchronized (lifecycleLock) {
 			running = true;
+			currentLeaderToken = leaderToken;
 			reconnectExecutor = reconnectExecutorFactory.get();
 			newConnection = new ConnectionSession();
 			activeConnection = newConnection;
@@ -68,22 +71,25 @@ public class BithumbWebSocketFeedClient implements BithumbFeedClient {
 
 	@Override
 	public void stop() {
-		stopInternal(true);
+		stopInternal();
 	}
 
 	@Override
 	public void stepDown() {
-		stopInternal(false);
+		stopInternal();
 	}
 
-	private void stopInternal(boolean writeDisconnectedStatus) {
+	private void stopInternal() {
 		ConnectionSession current;
 		ScheduledExecutorService executor;
+		String token;
 		synchronized (lifecycleLock) {
 			running = false;
 			current = activeConnection;
 			activeConnection = null;
 			executor = reconnectExecutor;
+			token = currentLeaderToken;
+			currentLeaderToken = null;
 		}
 		if (executor != null) {
 			executor.shutdownNow();
@@ -91,13 +97,8 @@ public class BithumbWebSocketFeedClient implements BithumbFeedClient {
 		if (current != null) {
 			current.closeSessionQuietly();
 		}
-		if (!writeDisconnectedStatus) {
-			return;
-		}
-		try {
-			priceStore.saveConnectionStatus(FeedConnectionStatus.DISCONNECTED);
-		} catch (Exception e) {
-			log.warn("종료 시 연결상태 기록 실패(Redis 장애로 추정) — 종료는 계속 진행합니다.", e);
+		if (token != null) {
+			writeStatusUnlessSuperseded(token, FeedConnectionStatus.DISCONNECTED);
 		}
 	}
 
@@ -109,6 +110,18 @@ public class BithumbWebSocketFeedClient implements BithumbFeedClient {
 
 	ConnectionSession currentHandler() {
 		return activeConnection;
+	}
+
+	private void writeStatusUnlessSuperseded(String token, FeedConnectionStatus status) {
+		try {
+			boolean written = bithumbFeedLeaderLock.writeUnlessSuperseded(
+				token, priceStore.connectionStatusKey(), status.name());
+			if (!written) {
+				log.info("빗썸 시세 피드 연결상태 기록을 건너뛴다 — 다른 인스턴스가 이미 리더를 넘겨받았다.");
+			}
+		} catch (Exception e) {
+			log.warn("연결상태 기록 실패(Redis 장애로 추정) — 계속 진행합니다.", e);
+		}
 	}
 
 	private void closeQuietly(WebSocketSession target, CloseStatus closeStatus) {
@@ -188,10 +201,9 @@ public class BithumbWebSocketFeedClient implements BithumbFeedClient {
 
 		private void onDisconnected() {
 			session = null;
-			try {
-				priceStore.saveConnectionStatus(FeedConnectionStatus.DISCONNECTED);
-			} catch (Exception e) {
-				log.warn("연결 끊김 상태 기록 실패(Redis 장애로 추정) — 재연결 예약은 계속 진행합니다.", e);
+			String token = currentLeaderToken;
+			if (token != null) {
+				writeStatusUnlessSuperseded(token, FeedConnectionStatus.DISCONNECTED);
 			}
 		}
 
@@ -209,7 +221,10 @@ public class BithumbWebSocketFeedClient implements BithumbFeedClient {
 				}
 				session = newSession;
 				reconnectDelaySeconds = RECONNECT_DELAY_MIN_SECONDS;
-				priceStore.saveConnectionStatus(FeedConnectionStatus.CONNECTED);
+				String token = currentLeaderToken;
+				if (token != null) {
+					writeStatusUnlessSuperseded(token, FeedConnectionStatus.CONNECTED);
+				}
 				log.info("빗썸 WebSocket 연결에 성공했습니다.");
 				subscribe(newSession, plainSymbols);
 			}

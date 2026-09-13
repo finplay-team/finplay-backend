@@ -61,7 +61,7 @@ class FakeBithumbFeedClientIntegrationTest {
 		PriceStore priceStore = priceStoreAt(FIXED_NOW);
 		FakeBithumbFeedClient feedClient = new FakeBithumbFeedClient(priceStore);
 
-		feedClient.start();
+		feedClient.start(null);
 		feedClient.emitTick("ETH_DISCONNECT", new BigDecimal("3000000"), FIXED_NOW.minusSeconds(1));
 		assertThat(priceStore.isPriceAvailable("ETH_DISCONNECT")).isTrue();
 
@@ -77,7 +77,7 @@ class FakeBithumbFeedClientIntegrationTest {
 		PriceStore priceStoreAtT0 = priceStoreAt(FIXED_NOW);
 		FakeBithumbFeedClient feedClient = new FakeBithumbFeedClient(priceStoreAtT0);
 
-		feedClient.start();
+		feedClient.start(null);
 		feedClient.emitTick("ETH_RECONNECT", new BigDecimal("3000000"), FIXED_NOW.minusSeconds(1));
 		assertThat(priceStoreAtT0.isPriceAvailable("ETH_RECONNECT")).isTrue();
 

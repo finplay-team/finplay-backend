@@ -20,7 +20,7 @@ public class BithumbFeedImmediateLifecycle {
 	public void startFeed() {
 		log.info("빗썸 시세 피드 시작");
 		try {
-			bithumbFeedClient.start();
+			bithumbFeedClient.start(null);
 		} catch (Exception e) {
 			log.error("빗썸 시세 피드 시작 실패 — 시세 기능만 저하된 상태로 기동을 계속합니다.", e);
 		}

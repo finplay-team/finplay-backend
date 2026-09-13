@@ -1,7 +1,5 @@
 package com.finplay.api.domain.market.feed;
 
-import com.finplay.api.domain.market.store.FeedConnectionStatus;
-import com.finplay.api.domain.market.store.PriceStore;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.util.Optional;
@@ -20,8 +18,6 @@ public class BithumbFeedLifecycle {
 
 	private final BithumbFeedLeaderLock bithumbFeedLeaderLock;
 
-	private final PriceStore priceStore;
-
 	private final long electionIntervalMs;
 
 	private String leaderToken;
@@ -29,12 +25,10 @@ public class BithumbFeedLifecycle {
 	public BithumbFeedLifecycle(
 		BithumbFeedClient bithumbFeedClient,
 		BithumbFeedLeaderLock bithumbFeedLeaderLock,
-		PriceStore priceStore,
 		@Value("${bithumb.feed.leader.election-interval-ms:10000}")
 		long electionIntervalMs) {
 		this.bithumbFeedClient = bithumbFeedClient;
 		this.bithumbFeedLeaderLock = bithumbFeedLeaderLock;
-		this.priceStore = priceStore;
 		this.electionIntervalMs = electionIntervalMs;
 	}
 
@@ -81,7 +75,7 @@ public class BithumbFeedLifecycle {
 		}
 		String acquiredToken = token.get();
 		try {
-			bithumbFeedClient.start();
+			bithumbFeedClient.start(acquiredToken);
 			leaderToken = acquiredToken;
 			log.info("빗썸 시세 피드 리더로 선출됐다 — 연결을 시작했다.");
 		} catch (Exception e) {
@@ -96,15 +90,6 @@ public class BithumbFeedLifecycle {
 		}
 		log.warn("빗썸 시세 피드 리더 갱신 실패 — 다른 인스턴스로 넘어가 팔로워로 전환한다.");
 		bithumbFeedClient.stepDown();
-		markDisconnectedUnlessSupersededBy(leaderToken);
 		leaderToken = null;
-	}
-
-	private void markDisconnectedUnlessSupersededBy(String token) {
-		boolean written = bithumbFeedLeaderLock.writeUnlessSuperseded(
-			token, priceStore.connectionStatusKey(), FeedConnectionStatus.DISCONNECTED.name());
-		if (!written) {
-			log.info("빗썸 시세 피드 연결상태 기록을 건너뛴다 — 다른 인스턴스가 이미 리더를 넘겨받았다.");
-		}
 	}
 }
