@@ -18,10 +18,10 @@ public class BithumbFeedLifecycle {
 
 	private final BithumbFeedLeaderLock bithumbFeedLeaderLock;
 
-	private volatile String leaderToken;
+	private String leaderToken;
 
 	@Scheduled(fixedRateString = "${bithumb.feed.leader.election-interval-ms:10000}")
-	public void electLeader() {
+	public synchronized void electLeader() {
 		if (leaderToken == null) {
 			tryBecomeLeader();
 		} else {
@@ -30,7 +30,7 @@ public class BithumbFeedLifecycle {
 	}
 
 	@PreDestroy
-	public void stopFeed() {
+	public synchronized void stopFeed() {
 		String token = leaderToken;
 		if (token == null) {
 			return;
@@ -46,12 +46,14 @@ public class BithumbFeedLifecycle {
 		if (token.isEmpty()) {
 			return;
 		}
-		leaderToken = token.get();
-		log.info("빗썸 시세 피드 리더로 선출됐다 — 연결을 시작한다.");
+		String acquiredToken = token.get();
 		try {
 			bithumbFeedClient.start();
+			leaderToken = acquiredToken;
+			log.info("빗썸 시세 피드 리더로 선출됐다 — 연결을 시작했다.");
 		} catch (Exception e) {
-			log.error("빗썸 시세 피드 시작 실패 — 시세 기능만 저하된 상태로 기동을 계속합니다.", e);
+			log.error("빗썸 시세 피드 시작 실패 — 리더 자리를 내려놓는다.", e);
+			bithumbFeedLeaderLock.unlock(acquiredToken);
 		}
 	}
 

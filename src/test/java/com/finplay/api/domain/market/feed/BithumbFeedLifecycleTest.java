@@ -58,6 +58,33 @@ class BithumbFeedLifecycleTest {
 	}
 
 	@Test
+	void electLeaderUnlocksAndStaysFollowerWhenClientStartFailsSoTheLockIsNotHeldByADeadLeader() {
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock);
+		when(bithumbFeedLeaderLock.tryLock()).thenReturn(Optional.of("token-1"));
+		doThrow(new RedisConnectionFailureException("Unable to connect to Redis")).when(bithumbFeedClient).start();
+
+		lifecycle.electLeader();
+
+		verify(bithumbFeedLeaderLock, times(1)).unlock("token-1");
+		verify(bithumbFeedLeaderLock, never()).renew(any());
+	}
+
+	@Test
+	void electLeaderTriesToBecomeLeaderAgainAfterClientStartFails() {
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock);
+		when(bithumbFeedLeaderLock.tryLock()).thenReturn(Optional.of("token-1"), Optional.of("token-2"));
+		doThrow(new RedisConnectionFailureException("Unable to connect to Redis")).doNothing()
+			.when(bithumbFeedClient)
+			.start();
+
+		lifecycle.electLeader();
+		lifecycle.electLeader();
+
+		verify(bithumbFeedClient, times(2)).start();
+		verify(bithumbFeedLeaderLock, times(1)).unlock("token-1");
+	}
+
+	@Test
 	void electLeaderRenewsInsteadOfRestartingWhenAlreadyLeaderAndRenewSucceeds() {
 		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock);
 		when(bithumbFeedLeaderLock.tryLock()).thenReturn(Optional.of("token-1"));
