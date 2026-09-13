@@ -427,8 +427,6 @@ class BithumbWebSocketFeedClientTest {
 		staleHandler.afterConnectionEstablished(session);
 
 		verify(priceStore, never()).saveConnectionStatus(any());
-		verify(instrumentRepository, never())
-			.findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(any(Market.class));
 		verify(session, never()).sendMessage(any());
 		verify(session, times(1)).close(CloseStatus.NORMAL);
 	}
@@ -506,6 +504,39 @@ class BithumbWebSocketFeedClientTest {
 	@FunctionalInterface
 	private interface ThrowingRunnable {
 		void run() throws Exception;
+	}
+
+	@Test
+	@DisplayName("subscribe()의 종목 조회가 느려도 stop()은 그 완료를 기다리지 않는다 (이슈 #564 재리뷰 — 종목 조회를 "
+		+ "lifecycleLock 밖으로 빼서 DB 지연이 리더 인계·종료를 막지 않게 한다)")
+	void stopDoesNotWaitForASlowInstrumentQueryDuringSubscribe() throws Exception {
+		CountDownLatch queryStarted = new CountDownLatch(1);
+		CountDownLatch releaseQuery = new CountDownLatch(1);
+		when(instrumentRepository.findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(Market.CRYPTO))
+			.thenAnswer(invocation -> {
+				queryStarted.countDown();
+				releaseQuery.await(5, TimeUnit.SECONDS);
+				return List.of();
+			});
+		BithumbWebSocketFeedClient.ConnectionSession handler = startAndGetHandler();
+		ExecutorService executor = Executors.newSingleThreadExecutor();
+		try {
+			Future<?> establishFuture = executor.submit(() -> handler.afterConnectionEstablished(session));
+			assertThat(queryStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+			long stopStartedAtNanos = System.nanoTime();
+			client.stop();
+			long stopElapsedMs = (System.nanoTime() - stopStartedAtNanos) / 1_000_000;
+
+			assertThat(stopElapsedMs)
+				.as("stop()이 종목 조회가 끝나기를(releaseQuery가 아직 안 풀렸는데도) 기다리면 안 된다")
+				.isLessThan(1000);
+
+			releaseQuery.countDown();
+			establishFuture.get(5, TimeUnit.SECONDS);
+		} finally {
+			executor.shutdownNow();
+		}
 	}
 
 	private void stubSuccessfulConnectAttempt() {

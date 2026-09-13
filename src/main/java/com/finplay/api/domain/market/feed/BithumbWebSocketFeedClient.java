@@ -197,6 +197,11 @@ public class BithumbWebSocketFeedClient implements BithumbFeedClient {
 
 		@Override
 		public void afterConnectionEstablished(WebSocketSession newSession) {
+			List<String> plainSymbols = instrumentRepository
+				.findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(Market.CRYPTO)
+				.stream()
+				.map(Instrument::getSymbol)
+				.toList();
 			synchronized (lifecycleLock) {
 				if (!isCurrent()) {
 					closeQuietly(newSession, CloseStatus.NORMAL);
@@ -206,7 +211,7 @@ public class BithumbWebSocketFeedClient implements BithumbFeedClient {
 				reconnectDelaySeconds = RECONNECT_DELAY_MIN_SECONDS;
 				priceStore.saveConnectionStatus(FeedConnectionStatus.CONNECTED);
 				log.info("빗썸 WebSocket 연결에 성공했습니다.");
-				subscribe(newSession);
+				subscribe(newSession, plainSymbols);
 			}
 		}
 
@@ -243,13 +248,8 @@ public class BithumbWebSocketFeedClient implements BithumbFeedClient {
 			}
 		}
 
-		private void subscribe(WebSocketSession target) {
+		private void subscribe(WebSocketSession target, List<String> plainSymbols) {
 			try {
-				List<String> plainSymbols = instrumentRepository
-					.findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(Market.CRYPTO)
-					.stream()
-					.map(Instrument::getSymbol)
-					.toList();
 				List<String> marketSymbols = plainSymbols.stream().map(symbol -> symbol + KRW_SUFFIX).toList();
 
 				String tickerPayload = objectMapper.writeValueAsString(

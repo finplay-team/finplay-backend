@@ -47,6 +47,17 @@ class BithumbFeedStatusReconcilerTest {
 	}
 
 	@Test
+	void doesNotOverwriteWithConnectedWhenClientDisconnectsBetweenTheInitialCheckAndTheWrite() {
+		when(bithumbFeedClient.isConnected()).thenReturn(true, false);
+		when(priceStore.getConnectionStatus()).thenReturn(FeedConnectionStatus.DISCONNECTED);
+		BithumbFeedStatusReconciler reconciler = new BithumbFeedStatusReconciler(bithumbFeedClient, priceStore);
+
+		reconciler.reconcileConnectionStatus();
+
+		verify(priceStore, never()).saveConnectionStatus(FeedConnectionStatus.CONNECTED);
+	}
+
+	@Test
 	void doesNotTouchStoreWhenClientIsNotConnected() {
 		when(bithumbFeedClient.isConnected()).thenReturn(false);
 		BithumbFeedStatusReconciler reconciler = new BithumbFeedStatusReconciler(bithumbFeedClient, priceStore);
