@@ -3,9 +3,11 @@ package com.finplay.api.domain.market.feed;
 import com.finplay.api.global.lock.RedisLock;
 import java.time.Duration;
 import java.util.Optional;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+@Slf4j
 @Component
 public class BithumbFeedLeaderLock {
 
@@ -32,6 +34,10 @@ public class BithumbFeedLeaderLock {
 	}
 
 	public void unlock(String token) {
-		redisLock.unlock(LOCK_KEY, token);
+		if (redisLock.unlock(LOCK_KEY, token) == RedisLock.UnlockResult.NOT_HELD) {
+			log.warn(
+				"빗썸 피드 리더 락 해제가 아무 것도 지우지 못했다(토큰 불일치 - TTL이 이미 만료돼 다른 "
+					+ "인스턴스가 리더를 넘겨받았을 수 있다)");
+		}
 	}
 }

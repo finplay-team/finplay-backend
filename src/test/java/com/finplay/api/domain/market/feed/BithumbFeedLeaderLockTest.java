@@ -8,11 +8,16 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.finplay.api.global.lock.RedisLock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.script.RedisScript;
@@ -124,5 +129,36 @@ class BithumbFeedLeaderLockTest {
 
 		verify(redisTemplate)
 			.execute((RedisScript<Long>)any(RedisScript.class), eq(List.of(LOCK_KEY)), eq("some-token"));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void unlockWarnsThatNothingWasDeletedWhenTheTokenNoLongerMatches() {
+		BithumbFeedLeaderLock lock = leaderLock(LOCK_TTL_SECONDS);
+		when(redisTemplate.execute((RedisScript<Long>)any(RedisScript.class), anyList(), any())).thenReturn(0L);
+
+		List<ILoggingEvent> logs = capturingLogs(() -> lock.unlock("stale-token"));
+
+		assertThat(logs).singleElement().satisfies(event -> {
+			assertThat(event.getLevel()).isEqualTo(Level.WARN);
+			assertThat(event.getFormattedMessage()).contains("지우지 못했다");
+		});
+	}
+
+	private static List<ILoggingEvent> capturingLogs(Runnable action) {
+		Logger logger = (Logger)LoggerFactory.getLogger(BithumbFeedLeaderLock.class);
+		ListAppender<ILoggingEvent> appender = new ListAppender<>();
+		appender.start();
+		Level originalLevel = logger.getLevel();
+		logger.setLevel(Level.DEBUG);
+		logger.addAppender(appender);
+		try {
+			action.run();
+			return List.copyOf(appender.list);
+		} finally {
+			logger.detachAppender(appender);
+			logger.setLevel(originalLevel);
+			appender.stop();
+		}
 	}
 }
