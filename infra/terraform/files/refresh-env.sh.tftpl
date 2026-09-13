@@ -1,0 +1,39 @@
+#!/bin/bash
+# SSM Parameter Store(/finplay/prod/*)에서 시크릿을 읽어 .env를 다시 만든다.
+# 최초 1회는 user_data가 부팅 시점에 실행하고, 시크릿을 나중에 바꾸면 SSM Send Command로
+# 이 스크립트만 재실행하면 된다 — 인스턴스를 새로 만들 필요가 없다.
+#
+# APP_IMAGE는 배포 파이프라인이 sed로 직접 갱신하는 값이라(현재 실행 중인 이미지 태그) 이
+# 스크립트가 덮어쓰면 안 된다 — 기존 .env에 있던 값을 그대로 보존한다. 처음 실행(아직 .env가
+# 없을 때)에는 빈 값으로 시작한다 — 첫 배포의 sed 치환 대상 줄이 미리 있어야 하기 때문이다.
+set -euo pipefail
+
+ENV_FILE="/home/ec2-user/finplay/.env"
+PREVIOUS_APP_IMAGE=""
+if [ -f "$ENV_FILE" ]; then
+  PREVIOUS_APP_IMAGE=$(grep -m1 '^APP_IMAGE=' "$ENV_FILE" | cut -d= -f2- || true)
+fi
+
+TMP_FILE=$(mktemp)
+trap 'rm -f "$TMP_FILE"' EXIT
+
+aws ssm get-parameters-by-path \
+  --path "${ssm_prefix}" \
+  --with-decryption \
+  --recursive \
+  --region ap-northeast-2 \
+  --query 'Parameters[].[Name,Value]' \
+  --output text |
+  while IFS=$'\t' read -r name value; do
+    key=$(basename "$name")
+    printf '%s=%s\n' "$key" "$value" >> "$TMP_FILE"
+  done
+
+printf 'APP_IMAGE=%s\n' "$PREVIOUS_APP_IMAGE" >> "$TMP_FILE"
+printf 'AWSLOGS_GROUP=%s\n' "${awslogs_group}" >> "$TMP_FILE"
+
+mv "$TMP_FILE" "$ENV_FILE"
+chown ec2-user:ec2-user "$ENV_FILE"
+chmod 600 "$ENV_FILE"
+
+echo "refresh-env.sh: .env 갱신 완료 ($(wc -l < "$ENV_FILE") 줄)"
