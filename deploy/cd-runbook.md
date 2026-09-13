@@ -1,5 +1,14 @@
 # CD 런북 — `dev` 머지 자동 배포
 
+> **2026-09-14 정정 — 이 문서는 EC2 1대 블루-그린 시절의 기록이다.** 배포 아키텍처가
+> [ADR-0030](../ai/adr/0030-rolling-deploy-multi-instance.md)으로 웹 EC2 2대 + 스케줄러
+> 1대 롤링 배포로 바뀌었고, 인프라 자체도 콘솔 수동 설정 대신 `infra/terraform/`으로
+> 코드화됐다. 아래의 "블루-그린 타깃 그룹 2개"·`EC2_INSTANCE_ID`(단수)·`TG_BLUE_ARN`·
+> `TG_GREEN_ARN` 등 콘솔 수동 설정 절차와 GitHub Variables 이름은 더 이상 유효하지 않다 —
+> 새 GitHub Variables 이름과 값은 `infra/terraform/outputs.tf`가 정본이다(`terraform
+> output`으로 확인). 이 문서는 이 파이프라인이 처음 만들어진 과정의 역사적 기록으로 남겨
+> 두며, 지금 다시 구축할 때는 여기 절차를 따르지 말고 ADR-0030 + `infra/terraform/`을 본다.
+
 > **이 문서는 아직 "돌고 있는 파이프라인"의 기록이 아니다.** 2026-08-13 기준 `.github/workflows/deploy.yml`은 PR #357로 작성됐고 AWS 콘솔 설정(OIDC·IAM 역할·ECR·EC2 권한·GitHub Variables)도 완료됐지만, **파이프라인이 실제로 한 번도 실행된 적은 없다.** 이 문서는 [ADR-0021](../ai/adr/0021-continuous-deployment.md)이 결정한 목표 구조를 **구축 순서와 실패 대응까지 포함해 옮긴 것**이며, 각 항목은 실제로 수행한 시점에 체크한다.
 >
 > 결정의 근거·대안은 ADR-0021이 정본이다. 배포 아키텍처(EC2 + RDS·ElastiCache·S3 + 블루-그린) 자체는 [ADR-0020](../ai/adr/0020-managed-service-deployment.md)이 정본이다. **수동 배포 절차는 폐기하지 않는다** — 파이프라인이 막혔을 때의 폴백으로 [`README.md`](README.md)에 남아 있다.
