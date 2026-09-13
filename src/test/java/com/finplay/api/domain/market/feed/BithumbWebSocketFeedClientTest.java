@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -83,8 +84,9 @@ class BithumbWebSocketFeedClientTest {
 		when(instrumentRepository.findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(Market.CRYPTO))
 			.thenReturn(List.of(
 				Instrument.create(Market.CRYPTO, "BTC", "비트코인", BigDecimal.ONE, 1000, true, LocalDateTime.now())));
+		BithumbWebSocketFeedClient.ConnectionSession handler = startAndGetHandler();
 
-		client.afterConnectionEstablished(session);
+		handler.afterConnectionEstablished(session);
 
 		verify(priceStore, times(1)).saveConnectionStatus(FeedConnectionStatus.CONNECTED);
 		verify(session, times(2)).sendMessage(any(TextMessage.class));
@@ -98,8 +100,9 @@ class BithumbWebSocketFeedClientTest {
 			.thenReturn(List.of(
 				Instrument.create(Market.CRYPTO, "BTC", "비트코인", BigDecimal.ONE, 1000, true, LocalDateTime.now())));
 		ArgumentCaptor<TextMessage> messageCaptor = ArgumentCaptor.forClass(TextMessage.class);
+		BithumbWebSocketFeedClient.ConnectionSession handler = startAndGetHandler();
 
-		client.afterConnectionEstablished(session);
+		handler.afterConnectionEstablished(session);
 
 		verify(session, times(2)).sendMessage(messageCaptor.capture());
 		List<TextMessage> sent = messageCaptor.getAllValues();
@@ -114,8 +117,9 @@ class BithumbWebSocketFeedClientTest {
 			.thenReturn(List.of(
 				Instrument.create(Market.CRYPTO, "BTC", "비트코인", BigDecimal.ONE, 1000, true, LocalDateTime.now())));
 		ArgumentCaptor<TextMessage> messageCaptor = ArgumentCaptor.forClass(TextMessage.class);
+		BithumbWebSocketFeedClient.ConnectionSession handler = startAndGetHandler();
 
-		client.afterConnectionEstablished(session);
+		handler.afterConnectionEstablished(session);
 
 		verify(instrumentRepository).findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(Market.CRYPTO);
 		verify(instrumentRepository, never()).findByMarketAndTradableTrueOrderByIdAsc(any(Market.class));
@@ -127,7 +131,10 @@ class BithumbWebSocketFeedClientTest {
 	@Test
 	@DisplayName("연결 종료 콜백 시 PriceStore에 DISCONNECTED 상태를 저장한다")
 	void afterConnectionClosedSavesDisconnectedStatus() {
-		client.afterConnectionClosed(session, CloseStatus.NORMAL);
+		BithumbWebSocketFeedClient.ConnectionSession handler = startAndGetHandler();
+		clearInvocations(priceStore);
+
+		handler.afterConnectionClosed(session, CloseStatus.NORMAL);
 
 		verify(priceStore, times(1)).saveConnectionStatus(FeedConnectionStatus.DISCONNECTED);
 	}
@@ -146,8 +153,9 @@ class BithumbWebSocketFeedClientTest {
 			  }
 			}
 			""";
+		BithumbWebSocketFeedClient.ConnectionSession handler = startAndGetHandler();
 
-		client.handleTextMessage(session, new TextMessage(payload));
+		handler.handleTextMessage(session, new TextMessage(payload));
 
 		verify(priceStore, times(1))
 			.saveTick("BTC", new BigDecimal("52000000"), LocalDateTime.of(2026, 7, 30, 15, 30, 0));
@@ -166,8 +174,9 @@ class BithumbWebSocketFeedClientTest {
 			  }
 			}
 			""";
+		BithumbWebSocketFeedClient.ConnectionSession handler = startAndGetHandler();
 
-		client.handleTextMessage(session, new TextMessage(payload));
+		handler.handleTextMessage(session, new TextMessage(payload));
 
 		LocalDateTime tradedAt = LocalDateTime.of(2026, 8, 6, 15, 37, 0);
 		verify(candleStore, times(1)).recordTrade("BTC", tradedAt, new BigDecimal("91839000"),
@@ -189,8 +198,9 @@ class BithumbWebSocketFeedClientTest {
 			  }
 			}
 			""";
+		BithumbWebSocketFeedClient.ConnectionSession handler = startAndGetHandler();
 
-		client.handleTextMessage(session, new TextMessage(payload));
+		handler.handleTextMessage(session, new TextMessage(payload));
 
 		verify(candleStore, times(2)).recordTrade(eq("BTC"), any(), any(), any());
 		verify(priceStore, times(2)).saveTick(eq("BTC"), any(), any());
@@ -202,8 +212,9 @@ class BithumbWebSocketFeedClientTest {
 		String subscribeAck = """
 			{ "status": "0000", "resmsg": "Filter Registered Successfully" }
 			""";
+		BithumbWebSocketFeedClient.ConnectionSession handler = startAndGetHandler();
 
-		client.handleTextMessage(session, new TextMessage(subscribeAck));
+		handler.handleTextMessage(session, new TextMessage(subscribeAck));
 
 		verify(priceStore, never()).saveTick(any(), any(), any());
 		verify(candleStore, never()).recordTrade(any(), any(), any(), any());
@@ -215,7 +226,8 @@ class BithumbWebSocketFeedClientTest {
 		when(instrumentRepository.findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(Market.CRYPTO))
 			.thenReturn(List.of());
 		when(session.isOpen()).thenReturn(true);
-		client.afterConnectionEstablished(session);
+		BithumbWebSocketFeedClient.ConnectionSession handler = startAndGetHandler();
+		handler.afterConnectionEstablished(session);
 
 		client.stop();
 
@@ -230,7 +242,8 @@ class BithumbWebSocketFeedClientTest {
 		when(instrumentRepository.findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(Market.CRYPTO))
 			.thenReturn(List.of());
 		when(session.isOpen()).thenReturn(true);
-		client.afterConnectionEstablished(session);
+		BithumbWebSocketFeedClient.ConnectionSession handler = startAndGetHandler();
+		handler.afterConnectionEstablished(session);
 		doThrow(new RedisConnectionFailureException("Unable to connect to Redis"))
 			.when(priceStore)
 			.saveConnectionStatus(FeedConnectionStatus.DISCONNECTED);
@@ -250,22 +263,21 @@ class BithumbWebSocketFeedClientTest {
 	@Test
 	@DisplayName("연결이 끊기면 재연결이 5초 뒤로 예약된다 (running=true인 동안, PR #110 리뷰 권장사항)")
 	void afterConnectionClosedSchedulesReconnectWhileRunning() {
-		stubSuccessfulConnectAttempt();
-		client.start();
+		BithumbWebSocketFeedClient.ConnectionSession handler = startAndGetHandler();
 
-		client.afterConnectionClosed(session, CloseStatus.NORMAL);
+		handler.afterConnectionClosed(session, CloseStatus.NORMAL);
 
 		verify(reconnectExecutor, times(1)).schedule(any(Runnable.class), eq(5L), eq(TimeUnit.SECONDS));
 	}
 
 	@Test
-	@DisplayName("stop() 이후에는 연결 종료 콜백이 와도 재연결이 예약되지 않는다 (PR #110 리뷰 권장사항)")
+	@DisplayName("stop() 이후에는 이전 세대의 연결 종료 콜백이 뒤늦게 와도 재연결이 예약되지 않는다 (PR #110 리뷰 권장사항, "
+		+ "이슈 #564 재선출 시나리오로 확장)")
 	void afterConnectionClosedDoesNotScheduleReconnectAfterStop() {
-		stubSuccessfulConnectAttempt();
-		client.start();
-		client.stop();
+		BithumbWebSocketFeedClient.ConnectionSession staleHandler = startAndGetHandler();
 
-		client.afterConnectionClosed(session, CloseStatus.NORMAL);
+		client.stop();
+		staleHandler.afterConnectionClosed(session, CloseStatus.NORMAL);
 
 		verify(reconnectExecutor, never()).schedule(any(Runnable.class), anyLong(), any(TimeUnit.class));
 	}
@@ -273,15 +285,14 @@ class BithumbWebSocketFeedClientTest {
 	@Test
 	@DisplayName("재연결 실패가 반복되면 지연이 5초→10초로 2배가 되고, 연결에 성공하면 다시 5초로 리셋된다")
 	void reconnectDelayDoublesOnRepeatedFailureAndResetsAfterSuccessfulConnection() {
-		stubSuccessfulConnectAttempt();
 		when(instrumentRepository.findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(Market.CRYPTO))
 			.thenReturn(List.of());
-		client.start();
+		BithumbWebSocketFeedClient.ConnectionSession handler = startAndGetHandler();
 
-		client.afterConnectionClosed(session, CloseStatus.NORMAL);
-		client.afterConnectionClosed(session, CloseStatus.NORMAL);
-		client.afterConnectionEstablished(session);
-		client.afterConnectionClosed(session, CloseStatus.NORMAL);
+		handler.afterConnectionClosed(session, CloseStatus.NORMAL);
+		handler.afterConnectionClosed(session, CloseStatus.NORMAL);
+		handler.afterConnectionEstablished(session);
+		handler.afterConnectionClosed(session, CloseStatus.NORMAL);
 
 		ArgumentCaptor<Long> delayCaptor = ArgumentCaptor.forClass(Long.class);
 		verify(reconnectExecutor, times(3)).schedule(any(Runnable.class), delayCaptor.capture(), eq(TimeUnit.SECONDS));
@@ -291,13 +302,12 @@ class BithumbWebSocketFeedClientTest {
 	@Test
 	@DisplayName("연결 종료 시 상태 기록이 Redis 장애로 실패해도 재연결은 그대로 예약된다 (PR #296 리뷰 권장사항)")
 	void afterConnectionClosedStillSchedulesReconnectWhenSavingDisconnectedStatusFails() {
-		stubSuccessfulConnectAttempt();
 		doThrow(new RedisConnectionFailureException("Unable to connect to Redis"))
 			.when(priceStore)
 			.saveConnectionStatus(FeedConnectionStatus.DISCONNECTED);
-		client.start();
+		BithumbWebSocketFeedClient.ConnectionSession handler = startAndGetHandler();
 
-		client.afterConnectionClosed(session, CloseStatus.NORMAL);
+		handler.afterConnectionClosed(session, CloseStatus.NORMAL);
 
 		verify(reconnectExecutor, times(1)).schedule(any(Runnable.class), eq(5L), eq(TimeUnit.SECONDS));
 	}
@@ -319,14 +329,13 @@ class BithumbWebSocketFeedClientTest {
 	@Test
 	@DisplayName("구독 전송이 실패하면 연결상태가 DISCONNECTED로 남고 재연결이 예약된다 (PR #110 리뷰 권장사항)")
 	void subscribeFailureMarksDisconnectedAndSchedulesReconnect() throws Exception {
-		stubSuccessfulConnectAttempt();
 		when(instrumentRepository.findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(Market.CRYPTO))
 			.thenReturn(List.of());
 		when(session.isOpen()).thenReturn(true);
 		doThrow(new IOException("전송 실패")).when(session).sendMessage(any(TextMessage.class));
-		client.start();
+		BithumbWebSocketFeedClient.ConnectionSession handler = startAndGetHandler();
 
-		client.afterConnectionEstablished(session);
+		handler.afterConnectionEstablished(session);
 
 		verify(priceStore, times(1)).saveConnectionStatus(FeedConnectionStatus.DISCONNECTED);
 		verify(session, times(1)).close(any(CloseStatus.class));
@@ -347,14 +356,50 @@ class BithumbWebSocketFeedClientTest {
 		reElectableClient.start();
 		reElectableClient.stop();
 		reElectableClient.start();
-		reElectableClient.afterConnectionClosed(session, CloseStatus.NORMAL);
+		BithumbWebSocketFeedClient.ConnectionSession handler = reElectableClient.currentHandler();
+		handler.afterConnectionClosed(session, CloseStatus.NORMAL);
 
 		verify(firstExecutor, times(1)).shutdownNow();
 		verify(secondExecutor, times(1)).schedule(any(Runnable.class), eq(5L), eq(TimeUnit.SECONDS));
 	}
 
+	@Test
+	@DisplayName("stop() 이후 뒤늦게 도착한 이전 세대의 연결 성공 콜백은 무시하고 세션을 닫는다(이슈 #564 재선출 시나리오 — "
+		+ "재선출 후 WebSocket 자동 재연결 영구 비활성화·진행 중이던 비동기 연결의 지연 완료 둘 다 재현)")
+	void staleConnectionEstablishedAfterStopIsIgnoredAndItsSessionIsClosed() throws Exception {
+		BithumbWebSocketFeedClient.ConnectionSession staleHandler = startAndGetHandler();
+		when(session.isOpen()).thenReturn(true);
+
+		client.stop();
+		staleHandler.afterConnectionEstablished(session);
+
+		verify(priceStore, never()).saveConnectionStatus(FeedConnectionStatus.CONNECTED);
+		verify(session, times(1)).close(CloseStatus.NORMAL);
+		assertThat(client.isConnected()).isFalse();
+	}
+
+	@Test
+	@DisplayName("stop() 이후 뒤늦게 도착한 이전 세대의 연결 종료 콜백은 공유 연결상태를 다시 기록하거나 재연결을 예약하지 않는다 "
+		+ "(이슈 #564 재선출 시나리오 — 새 리더의 연결상태를 덮어쓰는 것을 방지)")
+	void staleConnectionClosedAfterStopDoesNotOverwriteSharedConnectionStatus() {
+		BithumbWebSocketFeedClient.ConnectionSession staleHandler = startAndGetHandler();
+
+		client.stop();
+		clearInvocations(priceStore, reconnectExecutor);
+		staleHandler.afterConnectionClosed(session, CloseStatus.NORMAL);
+
+		verify(priceStore, never()).saveConnectionStatus(any());
+		verify(reconnectExecutor, never()).schedule(any(Runnable.class), anyLong(), any(TimeUnit.class));
+	}
+
 	private void stubSuccessfulConnectAttempt() {
 		when(webSocketClient.execute(any(), any(WebSocketHttpHeaders.class), any(URI.class)))
 			.thenReturn(CompletableFuture.completedFuture(session));
+	}
+
+	private BithumbWebSocketFeedClient.ConnectionSession startAndGetHandler() {
+		stubSuccessfulConnectAttempt();
+		client.start();
+		return client.currentHandler();
 	}
 }

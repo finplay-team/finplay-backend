@@ -30,7 +30,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 @Profile("prod")
 @RequiredArgsConstructor
-public class BithumbWebSocketFeedClient extends TextWebSocketHandler implements BithumbFeedClient {
+public class BithumbWebSocketFeedClient implements BithumbFeedClient {
 
 	private static final URI BITHUMB_WS_URI = URI.create("wss://pubwss.bithumb.com/pub/ws");
 	private static final String KRW_SUFFIX = "_KRW";
@@ -49,26 +49,30 @@ public class BithumbWebSocketFeedClient extends TextWebSocketHandler implements 
 	private final Clock clock;
 
 	private volatile boolean running;
-	private volatile WebSocketSession session;
-	private volatile long reconnectDelaySeconds = RECONNECT_DELAY_MIN_SECONDS;
 	private volatile ScheduledExecutorService reconnectExecutor;
+	private volatile ConnectionSession activeConnection;
 
 	@Override
 	public void start() {
 		running = true;
 		reconnectExecutor = reconnectExecutorFactory.get();
-		connect();
+		ConnectionSession newConnection = new ConnectionSession();
+		activeConnection = newConnection;
+		newConnection.connect();
 	}
 
 	@Override
 	public void stop() {
 		running = false;
+		ConnectionSession current = activeConnection;
+		activeConnection = null;
 		ScheduledExecutorService executor = reconnectExecutor;
 		if (executor != null) {
 			executor.shutdownNow();
 		}
-		closeQuietly(session, CloseStatus.NORMAL);
-		session = null;
+		if (current != null) {
+			current.closeSessionQuietly();
+		}
 		try {
 			priceStore.saveConnectionStatus(FeedConnectionStatus.DISCONNECTED);
 		} catch (Exception e) {
@@ -78,100 +82,12 @@ public class BithumbWebSocketFeedClient extends TextWebSocketHandler implements 
 
 	@Override
 	public boolean isConnected() {
-		WebSocketSession currentSession = session;
-		return currentSession != null && currentSession.isOpen();
+		ConnectionSession current = activeConnection;
+		return current != null && current.isConnected();
 	}
 
-	@Override
-	public void afterConnectionEstablished(WebSocketSession newSession) {
-		session = newSession;
-		reconnectDelaySeconds = RECONNECT_DELAY_MIN_SECONDS;
-		priceStore.saveConnectionStatus(FeedConnectionStatus.CONNECTED);
-		log.info("빗썸 WebSocket 연결에 성공했습니다.");
-		subscribe(newSession);
-	}
-
-	@Override
-	public void handleTextMessage(WebSocketSession webSocketSession, TextMessage message) {
-		String payload = message.getPayload();
-		BithumbTickerMessageParser.parse(objectMapper, payload)
-			.ifPresent(tick -> priceStore.saveTick(tick.symbol(), tick.price(), tick.receivedAt()));
-		BithumbTransactionMessageParser.parse(objectMapper, payload).forEach(trade -> {
-			candleStore.recordTrade(trade.symbol(), trade.tradedAt(), trade.price(), trade.quantity());
-			priceStore.saveTick(trade.symbol(), trade.price(), trade.tradedAt());
-		});
-	}
-
-	@Override
-	public void handleTransportError(WebSocketSession webSocketSession, Throwable exception) {
-		log.warn("빗썸 WebSocket 전송 오류가 발생했습니다.", exception);
-	}
-
-	@Override
-	public void afterConnectionClosed(WebSocketSession webSocketSession, CloseStatus closeStatus) {
-		log.warn("빗썸 WebSocket 연결이 종료됐습니다 (status={}).", closeStatus);
-		onDisconnected();
-		scheduleReconnect();
-	}
-
-	private void connect() {
-		if (!running) {
-			return;
-		}
-		webSocketClient
-			.execute(this, new WebSocketHttpHeaders(), BITHUMB_WS_URI)
-			.exceptionally(ex -> {
-				log.warn("빗썸 WebSocket 연결에 실패했습니다.", ex);
-				onDisconnected();
-				scheduleReconnect();
-				return null;
-			});
-	}
-
-	private void scheduleReconnect() {
-		ScheduledExecutorService executor = reconnectExecutor;
-		if (!running || executor == null || executor.isShutdown()) {
-			return;
-		}
-		long delay = reconnectDelaySeconds;
-		executor.schedule(this::connect, delay, TimeUnit.SECONDS);
-		reconnectDelaySeconds = Math.min(delay * 2, RECONNECT_DELAY_MAX_SECONDS);
-	}
-
-	private void onDisconnected() {
-		session = null;
-		try {
-			priceStore.saveConnectionStatus(FeedConnectionStatus.DISCONNECTED);
-		} catch (Exception e) {
-			log.warn("연결 끊김 상태 기록 실패(Redis 장애로 추정) — 재연결 예약은 계속 진행합니다.", e);
-		}
-	}
-
-	private void subscribe(WebSocketSession target) {
-		try {
-			List<String> plainSymbols = instrumentRepository
-				.findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(Market.CRYPTO)
-				.stream()
-				.map(Instrument::getSymbol)
-				.toList();
-			List<String> marketSymbols = plainSymbols.stream().map(symbol -> symbol + KRW_SUFFIX).toList();
-
-			String tickerPayload = objectMapper.writeValueAsString(
-				new TickerSubscribeRequest(SUBSCRIBE_TYPE_TICKER, marketSymbols, SUBSCRIBE_TICK_TYPES));
-			target.sendMessage(new TextMessage(tickerPayload));
-
-			String transactionPayload = objectMapper.writeValueAsString(
-				new TransactionSubscribeRequest(SUBSCRIBE_TYPE_TRANSACTION, marketSymbols));
-			target.sendMessage(new TextMessage(transactionPayload));
-
-			LocalDateTime now = LocalDateTime.now(clock);
-			plainSymbols.forEach(symbol -> candleStore.touchSince(symbol, now));
-		} catch (Exception ex) {
-			log.warn("빗썸 구독에 실패해 연결을 재시도합니다.", ex);
-			closeQuietly(target, CloseStatus.SERVER_ERROR);
-			onDisconnected();
-			scheduleReconnect();
-		}
+	ConnectionSession currentHandler() {
+		return activeConnection;
 	}
 
 	private void closeQuietly(WebSocketSession target, CloseStatus closeStatus) {
@@ -196,6 +112,135 @@ public class BithumbWebSocketFeedClient extends TextWebSocketHandler implements 
 
 		private TransactionSubscribeRequest {
 			symbols = List.copyOf(symbols);
+		}
+	}
+
+	final class ConnectionSession extends TextWebSocketHandler {
+
+		private volatile WebSocketSession session;
+		private volatile long reconnectDelaySeconds = RECONNECT_DELAY_MIN_SECONDS;
+
+		private boolean isCurrent() {
+			return activeConnection == this;
+		}
+
+		private boolean isConnected() {
+			WebSocketSession currentSession = session;
+			return currentSession != null && currentSession.isOpen();
+		}
+
+		private void closeSessionQuietly() {
+			closeQuietly(session, CloseStatus.NORMAL);
+			session = null;
+		}
+
+		private void connect() {
+			if (!running || !isCurrent()) {
+				return;
+			}
+			webSocketClient
+				.execute(this, new WebSocketHttpHeaders(), BITHUMB_WS_URI)
+				.exceptionally(ex -> {
+					if (isCurrent()) {
+						log.warn("빗썸 WebSocket 연결에 실패했습니다.", ex);
+						onDisconnected();
+						scheduleReconnect();
+					}
+					return null;
+				});
+		}
+
+		private void scheduleReconnect() {
+			if (!isCurrent()) {
+				return;
+			}
+			ScheduledExecutorService executor = reconnectExecutor;
+			if (!running || executor == null || executor.isShutdown()) {
+				return;
+			}
+			long delay = reconnectDelaySeconds;
+			executor.schedule(this::connect, delay, TimeUnit.SECONDS);
+			reconnectDelaySeconds = Math.min(delay * 2, RECONNECT_DELAY_MAX_SECONDS);
+		}
+
+		private void onDisconnected() {
+			session = null;
+			try {
+				priceStore.saveConnectionStatus(FeedConnectionStatus.DISCONNECTED);
+			} catch (Exception e) {
+				log.warn("연결 끊김 상태 기록 실패(Redis 장애로 추정) — 재연결 예약은 계속 진행합니다.", e);
+			}
+		}
+
+		@Override
+		public void afterConnectionEstablished(WebSocketSession newSession) {
+			if (!isCurrent()) {
+				closeQuietly(newSession, CloseStatus.NORMAL);
+				return;
+			}
+			session = newSession;
+			reconnectDelaySeconds = RECONNECT_DELAY_MIN_SECONDS;
+			priceStore.saveConnectionStatus(FeedConnectionStatus.CONNECTED);
+			log.info("빗썸 WebSocket 연결에 성공했습니다.");
+			subscribe(newSession);
+		}
+
+		@Override
+		public void handleTextMessage(WebSocketSession webSocketSession, TextMessage message) {
+			if (!isCurrent()) {
+				return;
+			}
+			String payload = message.getPayload();
+			BithumbTickerMessageParser.parse(objectMapper, payload)
+				.ifPresent(tick -> priceStore.saveTick(tick.symbol(), tick.price(), tick.receivedAt()));
+			BithumbTransactionMessageParser.parse(objectMapper, payload).forEach(trade -> {
+				candleStore.recordTrade(trade.symbol(), trade.tradedAt(), trade.price(), trade.quantity());
+				priceStore.saveTick(trade.symbol(), trade.price(), trade.tradedAt());
+			});
+		}
+
+		@Override
+		public void handleTransportError(WebSocketSession webSocketSession, Throwable exception) {
+			log.warn("빗썸 WebSocket 전송 오류가 발생했습니다.", exception);
+		}
+
+		@Override
+		public void afterConnectionClosed(WebSocketSession webSocketSession, CloseStatus closeStatus) {
+			if (!isCurrent()) {
+				return;
+			}
+			log.warn("빗썸 WebSocket 연결이 종료됐습니다 (status={}).", closeStatus);
+			onDisconnected();
+			scheduleReconnect();
+		}
+
+		private void subscribe(WebSocketSession target) {
+			try {
+				List<String> plainSymbols = instrumentRepository
+					.findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(Market.CRYPTO)
+					.stream()
+					.map(Instrument::getSymbol)
+					.toList();
+				List<String> marketSymbols = plainSymbols.stream().map(symbol -> symbol + KRW_SUFFIX).toList();
+
+				String tickerPayload = objectMapper.writeValueAsString(
+					new TickerSubscribeRequest(SUBSCRIBE_TYPE_TICKER, marketSymbols, SUBSCRIBE_TICK_TYPES));
+				target.sendMessage(new TextMessage(tickerPayload));
+
+				String transactionPayload = objectMapper.writeValueAsString(
+					new TransactionSubscribeRequest(SUBSCRIBE_TYPE_TRANSACTION, marketSymbols));
+				target.sendMessage(new TextMessage(transactionPayload));
+
+				LocalDateTime now = LocalDateTime.now(clock);
+				plainSymbols.forEach(symbol -> candleStore.touchSince(symbol, now));
+			} catch (Exception ex) {
+				log.warn("빗썸 구독에 실패해 연결을 재시도합니다.", ex);
+				closeQuietly(target, CloseStatus.SERVER_ERROR);
+				if (isCurrent()) {
+					onDisconnected();
+					scheduleReconnect();
+				}
+			}
 		}
 	}
 }
