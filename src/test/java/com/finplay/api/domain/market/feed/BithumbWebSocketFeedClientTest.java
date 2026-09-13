@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -27,7 +28,12 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
@@ -390,6 +396,76 @@ class BithumbWebSocketFeedClientTest {
 
 		verify(priceStore, never()).saveConnectionStatus(any());
 		verify(reconnectExecutor, never()).schedule(any(Runnable.class), anyLong(), any(TimeUnit.class));
+	}
+
+	@Test
+	@DisplayName("stepDown()은 세션을 닫아도 공유 연결상태는 쓰지 않는다(이슈 #564 재리뷰 차단 1 — 다른 인스턴스의 CONNECTED를 "
+		+ "덮어쓰지 않기 위해 리더 상실 시에는 상태 기록 권한을 주장하지 않는다)")
+	void stepDownClosesSessionButDoesNotClaimSharedConnectionStatus() throws Exception {
+		when(instrumentRepository.findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(Market.CRYPTO))
+			.thenReturn(List.of());
+		when(session.isOpen()).thenReturn(true);
+		BithumbWebSocketFeedClient.ConnectionSession handler = startAndGetHandler();
+		handler.afterConnectionEstablished(session);
+		clearInvocations(priceStore, reconnectExecutor);
+
+		client.stepDown();
+
+		verify(session, times(1)).close(CloseStatus.NORMAL);
+		verify(priceStore, never()).saveConnectionStatus(any());
+		assertThat(client.isConnected()).isFalse();
+	}
+
+	@Test
+	@DisplayName("afterConnectionEstablished와 stop()을 실제로 동시에 실행해도 확립된 세션이 닫히지 않은 채 남지 않는다 "
+		+ "(이슈 #564 재리뷰 차단 2 — check-then-act 레이스 재현, CountDownLatch로 실제 스레드 두 개를 동시에 돌린다)")
+	void concurrentEstablishAndStopNeverLeavesAnOrphanedOpenSession() throws Exception {
+		when(instrumentRepository.findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(Market.CRYPTO))
+			.thenReturn(List.of());
+		for (int i = 0; i < 100; i++) {
+			BithumbWebSocketFeedClient.ConnectionSession handler = startAndGetHandler();
+			WebSocketSession raceSession = mock(WebSocketSession.class);
+			when(raceSession.isOpen()).thenReturn(true);
+
+			runConcurrently(
+				() -> handler.afterConnectionEstablished(raceSession),
+				client::stop);
+
+			verify(raceSession, atLeastOnce()).close(any(CloseStatus.class));
+			assertThat(client.isConnected()).isFalse();
+		}
+	}
+
+	private void runConcurrently(ThrowingRunnable actionA, ThrowingRunnable actionB) throws Exception {
+		CountDownLatch ready = new CountDownLatch(2);
+		CountDownLatch start = new CountDownLatch(1);
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		try {
+			Future<Void> futureA = executor.submit(toCallable(actionA, ready, start));
+			Future<Void> futureB = executor.submit(toCallable(actionB, ready, start));
+			assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+			start.countDown();
+			futureA.get(15, TimeUnit.SECONDS);
+			futureB.get(15, TimeUnit.SECONDS);
+		} finally {
+			start.countDown();
+			executor.shutdownNow();
+		}
+		assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+	}
+
+	private Callable<Void> toCallable(ThrowingRunnable action, CountDownLatch ready, CountDownLatch start) {
+		return () -> {
+			ready.countDown();
+			start.await();
+			action.run();
+			return null;
+		};
+	}
+
+	@FunctionalInterface
+	private interface ThrowingRunnable {
+		void run() throws Exception;
 	}
 
 	private void stubSuccessfulConnectAttempt() {

@@ -96,11 +96,11 @@ class BithumbFeedLifecycleTest {
 
 		verify(bithumbFeedClient, times(1)).start();
 		verify(bithumbFeedLeaderLock, times(1)).renew("token-1");
-		verify(bithumbFeedClient, never()).stop();
+		verify(bithumbFeedClient, never()).stepDown();
 	}
 
 	@Test
-	void electLeaderStopsAndStepsDownWhenAlreadyLeaderAndRenewFails() {
+	void electLeaderStepsDownWithoutClaimingSharedStatusWhenAlreadyLeaderAndRenewFails() {
 		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 10_000L);
 		when(bithumbFeedLeaderLock.tryLock()).thenReturn(Optional.of("token-1"));
 		when(bithumbFeedLeaderLock.renew("token-1")).thenReturn(false);
@@ -108,7 +108,8 @@ class BithumbFeedLifecycleTest {
 		lifecycle.electLeader();
 		lifecycle.electLeader();
 
-		verify(bithumbFeedClient, times(1)).stop();
+		verify(bithumbFeedClient, times(1)).stepDown();
+		verify(bithumbFeedClient, never()).stop();
 	}
 
 	@Test

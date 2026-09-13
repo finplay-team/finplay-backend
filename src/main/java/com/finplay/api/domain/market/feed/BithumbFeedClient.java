@@ -6,5 +6,7 @@ public interface BithumbFeedClient {
 
 	void stop();
 
+	void stepDown();
+
 	boolean isConnected();
 }

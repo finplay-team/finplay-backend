@@ -30,6 +30,11 @@ public class FakeBithumbFeedClient implements BithumbFeedClient {
 	}
 
 	@Override
+	public void stepDown() {
+		stop();
+	}
+
+	@Override
 	public boolean isConnected() {
 		return connected;
 	}

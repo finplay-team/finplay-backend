@@ -89,7 +89,7 @@ public class BithumbFeedLifecycle {
 			return;
 		}
 		log.warn("빗썸 시세 피드 리더 갱신 실패 — 다른 인스턴스로 넘어가 팔로워로 전환한다.");
-		bithumbFeedClient.stop();
+		bithumbFeedClient.stepDown();
 		leaderToken = null;
 	}
 }

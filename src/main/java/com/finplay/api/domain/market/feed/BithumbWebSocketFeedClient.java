@@ -48,30 +48,51 @@ public class BithumbWebSocketFeedClient implements BithumbFeedClient {
 	private final Supplier<ScheduledExecutorService> reconnectExecutorFactory;
 	private final Clock clock;
 
+	private final Object lifecycleLock = new Object();
+
 	private volatile boolean running;
 	private volatile ScheduledExecutorService reconnectExecutor;
 	private volatile ConnectionSession activeConnection;
 
 	@Override
 	public void start() {
-		running = true;
-		reconnectExecutor = reconnectExecutorFactory.get();
-		ConnectionSession newConnection = new ConnectionSession();
-		activeConnection = newConnection;
+		ConnectionSession newConnection;
+		synchronized (lifecycleLock) {
+			running = true;
+			reconnectExecutor = reconnectExecutorFactory.get();
+			newConnection = new ConnectionSession();
+			activeConnection = newConnection;
+		}
 		newConnection.connect();
 	}
 
 	@Override
 	public void stop() {
-		running = false;
-		ConnectionSession current = activeConnection;
-		activeConnection = null;
-		ScheduledExecutorService executor = reconnectExecutor;
+		stopInternal(true);
+	}
+
+	@Override
+	public void stepDown() {
+		stopInternal(false);
+	}
+
+	private void stopInternal(boolean writeDisconnectedStatus) {
+		ConnectionSession current;
+		ScheduledExecutorService executor;
+		synchronized (lifecycleLock) {
+			running = false;
+			current = activeConnection;
+			activeConnection = null;
+			executor = reconnectExecutor;
+		}
 		if (executor != null) {
 			executor.shutdownNow();
 		}
 		if (current != null) {
 			current.closeSessionQuietly();
+		}
+		if (!writeDisconnectedStatus) {
+			return;
 		}
 		try {
 			priceStore.saveConnectionStatus(FeedConnectionStatus.DISCONNECTED);
@@ -174,12 +195,14 @@ public class BithumbWebSocketFeedClient implements BithumbFeedClient {
 
 		@Override
 		public void afterConnectionEstablished(WebSocketSession newSession) {
-			if (!isCurrent()) {
-				closeQuietly(newSession, CloseStatus.NORMAL);
-				return;
+			synchronized (lifecycleLock) {
+				if (!isCurrent()) {
+					closeQuietly(newSession, CloseStatus.NORMAL);
+					return;
+				}
+				session = newSession;
+				reconnectDelaySeconds = RECONNECT_DELAY_MIN_SECONDS;
 			}
-			session = newSession;
-			reconnectDelaySeconds = RECONNECT_DELAY_MIN_SECONDS;
 			priceStore.saveConnectionStatus(FeedConnectionStatus.CONNECTED);
 			log.info("빗썸 WebSocket 연결에 성공했습니다.");
 			subscribe(newSession);
