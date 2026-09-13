@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import ch.qos.logback.classic.Level;
@@ -43,6 +44,18 @@ class RedisLockTest {
 	@SuppressWarnings("unchecked")
 	private void givenUnlockScriptThrows() {
 		when(redisTemplate.execute((RedisScript<Long>)any(RedisScript.class), anyList(), any()))
+			.thenThrow(new RuntimeException("Redis 장애"));
+	}
+
+	@SuppressWarnings("unchecked")
+	private void givenRenewScriptReturns(Long result) {
+		when(redisTemplate.execute((RedisScript<Long>)any(RedisScript.class), anyList(), any(), any()))
+			.thenReturn(result);
+	}
+
+	@SuppressWarnings("unchecked")
+	private void givenRenewScriptThrows() {
+		when(redisTemplate.execute((RedisScript<Long>)any(RedisScript.class), anyList(), any(), any()))
 			.thenThrow(new RuntimeException("Redis 장애"));
 	}
 
@@ -92,6 +105,64 @@ class RedisLockTest {
 			assertThat(event.getFormattedMessage()).contains("Redis 장애");
 			assertThat(event.getThrowableProxy()).isNotNull();
 		});
+	}
+
+	@Test
+	@DisplayName("스크립트가 1을 반환하면(보유자 토큰 일치) 연장에 성공한다")
+	void renewReturnsTrueWhenTheScriptExtendedTheKey() {
+		givenRenewScriptReturns(1L);
+
+		assertThat(redisLock.renew(KEY, TOKEN, Duration.ofSeconds(30))).isTrue();
+	}
+
+	@Test
+	@DisplayName("스크립트가 0을 반환하면(보유자 토큰 불일치 — TTL 만료 후 다른 보유자가 잡았을 수 있다) 연장에 실패한다")
+	void renewReturnsFalseWhenTheScriptExtendedNothing() {
+		givenRenewScriptReturns(0L);
+
+		assertThat(redisLock.renew(KEY, TOKEN, Duration.ofSeconds(30))).isFalse();
+	}
+
+	@Test
+	@DisplayName("스크립트가 null을 반환해도 언박싱 NPE 없이 연장 실패로 본다")
+	void renewReturnsFalseWithoutUnboxingWhenTheScriptReturnsNull() {
+		givenRenewScriptReturns(null);
+
+		assertThat(redisLock.renew(KEY, TOKEN, Duration.ofSeconds(30))).isFalse();
+	}
+
+	@Test
+	@DisplayName("Redis가 예외를 던지면 연장 실패로 삼킨다")
+	void renewReturnsFalseWhenRedisThrows() {
+		givenRenewScriptThrows();
+
+		assertThat(redisLock.renew(KEY, TOKEN, Duration.ofSeconds(30))).isFalse();
+	}
+
+	@Test
+	@DisplayName("Redis 장애로 연장에 실패하면 이 클래스가 WARN에 예외를 함께 남긴다")
+	void renewLogsTheRedisFailureWithTheThrowable() {
+		givenRenewScriptThrows();
+
+		List<ILoggingEvent> logs = capturingLogs(() -> redisLock.renew(KEY, TOKEN, Duration.ofSeconds(30)));
+
+		assertThat(logs).singleElement().satisfies(event -> {
+			assertThat(event.getLevel()).isEqualTo(Level.WARN);
+			assertThat(event.getFormattedMessage()).contains("Redis 장애");
+			assertThat(event.getThrowableProxy()).isNotNull();
+		});
+	}
+
+	@Test
+	@DisplayName("연장 요청은 주어진 TTL을 밀리초로 스크립트에 전달한다")
+	@SuppressWarnings("unchecked")
+	void renewPassesTheGivenTtlAsMillisecondsToTheScript() {
+		givenRenewScriptReturns(1L);
+
+		redisLock.renew(KEY, TOKEN, Duration.ofSeconds(30));
+
+		verify(redisTemplate).execute(
+			(RedisScript<Long>)any(RedisScript.class), eq(List.of(KEY)), eq(TOKEN), eq("30000"));
 	}
 
 	@Test

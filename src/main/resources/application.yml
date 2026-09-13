@@ -169,6 +169,11 @@ bithumb:
     ticker:
       connect-timeout-ms: ${BITHUMB_TICKER_CONNECT_TIMEOUT_MS:2000}
       read-timeout-ms: ${BITHUMB_TICKER_READ_TIMEOUT_MS:3000}
+    # 다중 인스턴스 환경에서 빗썸 WebSocket 연결을 인스턴스 하나만 유지하도록 하는 리더 선출 설정(이슈 #564).
+    # 이 값을 읽는 BithumbFeedLifecycle은 prod 프로필에서만 리더 선출 로직으로 동작한다.
+    leader:
+      lock-ttl-seconds: ${BITHUMB_FEED_LEADER_LOCK_TTL_SECONDS:30}
+      election-interval-ms: ${BITHUMB_FEED_LEADER_ELECTION_INTERVAL_MS:10000}
 
 # 지정가 체결 비동기 실행기(LimitOrderFillExecutorRouter, ADR-0024). enabled·partition-count·
 # queue-capacity-per-partition의 정본은 ai/adr/0024-limit-order-fill-executor.md이고, batch-size의
