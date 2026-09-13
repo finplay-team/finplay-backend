@@ -32,7 +32,7 @@ class BithumbFeedStatusReconcilerIntegrationTest {
 	@Test
 	void rewritesStatusKeyWhenFeedClientIsConnectedButRedisLostTheKey() {
 		FakeBithumbFeedClient feedClient = new FakeBithumbFeedClient(priceStore);
-		feedClient.start();
+		feedClient.start(null);
 		BithumbFeedStatusReconciler reconciler = new BithumbFeedStatusReconciler(feedClient, priceStore);
 		redisTemplate.delete(STATUS_KEY);
 		assertThat(redisTemplate.hasKey(STATUS_KEY)).isFalse();

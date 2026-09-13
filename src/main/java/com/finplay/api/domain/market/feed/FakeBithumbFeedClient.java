@@ -18,7 +18,7 @@ public class FakeBithumbFeedClient implements BithumbFeedClient {
 	private volatile boolean connected;
 
 	@Override
-	public void start() {
+	public void start(String leaderToken) {
 		connected = true;
 		priceStore.saveConnectionStatus(FeedConnectionStatus.CONNECTED);
 	}
@@ -27,6 +27,11 @@ public class FakeBithumbFeedClient implements BithumbFeedClient {
 	public void stop() {
 		connected = false;
 		priceStore.saveConnectionStatus(FeedConnectionStatus.DISCONNECTED);
+	}
+
+	@Override
+	public void stepDown() {
+		stop();
 	}
 
 	@Override
@@ -43,6 +48,6 @@ public class FakeBithumbFeedClient implements BithumbFeedClient {
 	}
 
 	public void simulateReconnect() {
-		start();
+		start(null);
 	}
 }

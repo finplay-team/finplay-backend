@@ -14,6 +14,7 @@ import com.finplay.api.domain.feedback.entity.MarketNewsItemType;
 import com.finplay.api.domain.feedback.repository.MarketNewsItemRepository;
 import com.finplay.api.domain.market.entity.Instrument;
 import com.finplay.api.domain.market.entity.Market;
+import com.finplay.api.domain.market.feed.BithumbFeedLifecycle;
 import com.finplay.api.domain.market.feed.BithumbFeedSimulator;
 import com.finplay.api.domain.market.feed.BithumbFeedStatusReconciler;
 import com.finplay.api.domain.market.service.InstrumentService;
@@ -156,7 +157,8 @@ class NewsCollectionIntegrationTest {
 		int registered = countScheduledMethods();
 		assertThat(registered).as("컨텍스트에서 @Scheduled를 하나도 세지 못했다").isGreaterThanOrEqualTo(6);
 		int disabledInTestsOnly = countIfDisabledInTests(BithumbFeedSimulator.class)
-			+ countIfDisabledInTests(BithumbFeedStatusReconciler.class);
+			+ countIfDisabledInTests(BithumbFeedStatusReconciler.class)
+			+ countIfDisabledInTests(BithumbFeedLifecycle.class);
 
 		assertThat(poolSize)
 			.as("등록된 @Scheduled %d개(+테스트에서만 꺼진 %d개)보다 풀이 작다",
