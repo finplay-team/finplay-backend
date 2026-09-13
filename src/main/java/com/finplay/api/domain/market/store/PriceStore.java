@@ -89,6 +89,10 @@ public class PriceStore {
 		redisTemplate.opsForValue().set(STATUS_KEY, status.name());
 	}
 
+	public String connectionStatusKey() {
+		return STATUS_KEY;
+	}
+
 	public FeedConnectionStatus getConnectionStatus() {
 		String value = redisTemplate.opsForValue().get(STATUS_KEY);
 		return value == null ? FeedConnectionStatus.DISCONNECTED : FeedConnectionStatus.valueOf(value);

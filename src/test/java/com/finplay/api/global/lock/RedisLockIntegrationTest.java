@@ -21,6 +21,8 @@ class RedisLockIntegrationTest {
 	private static final String WRONG_TOKEN_KEY = "test:redis-lock:wrong-token";
 	private static final String TTL_EXPIRY_KEY = "test:redis-lock:ttl-expiry";
 	private static final String RENEW_KEY = "test:redis-lock:renew";
+	private static final String WRITE_UNLESS_SUPERSEDED_LOCK_KEY = "test:redis-lock:write-unless-superseded";
+	private static final String WRITE_UNLESS_SUPERSEDED_TARGET_KEY = "test:redis-lock:write-unless-superseded:target";
 
 	private static final Duration LONG_ENOUGH_TTL = Duration.ofSeconds(30);
 
@@ -36,6 +38,8 @@ class RedisLockIntegrationTest {
 		redisTemplate.delete(WRONG_TOKEN_KEY);
 		redisTemplate.delete(TTL_EXPIRY_KEY);
 		redisTemplate.delete(RENEW_KEY);
+		redisTemplate.delete(WRITE_UNLESS_SUPERSEDED_LOCK_KEY);
+		redisTemplate.delete(WRITE_UNLESS_SUPERSEDED_TARGET_KEY);
 	}
 
 	@Test
@@ -119,5 +123,45 @@ class RedisLockIntegrationTest {
 		Thread.sleep(1500);
 
 		assertThat(redisLock.renew(RENEW_KEY, token.get(), LONG_ENOUGH_TTL)).isFalse();
+	}
+
+	@Test
+	@DisplayName("내 토큰이 락을 여전히 들고 있으면 조건부 쓰기가 성공하고 타깃 키가 갱신된다")
+	void writeUnlessSupersededWritesWhenMyTokenStillHoldsTheLock() {
+		Optional<String> token = redisLock.tryLock(WRITE_UNLESS_SUPERSEDED_LOCK_KEY, LONG_ENOUGH_TTL);
+		assertThat(token).isPresent();
+
+		assertThat(redisLock.writeUnlessSuperseded(
+			WRITE_UNLESS_SUPERSEDED_LOCK_KEY, token.get(), WRITE_UNLESS_SUPERSEDED_TARGET_KEY, "DISCONNECTED"))
+			.isTrue();
+
+		assertThat(redisTemplate.opsForValue().get(WRITE_UNLESS_SUPERSEDED_TARGET_KEY)).isEqualTo("DISCONNECTED");
+	}
+
+	@Test
+	@DisplayName("락 키가 존재하지 않으면(아무도 넘겨받지 않음) 조건부 쓰기가 성공한다")
+	void writeUnlessSupersededWritesWhenNobodyCurrentlyHoldsTheLock() {
+		assertThat(redisTemplate.hasKey(WRITE_UNLESS_SUPERSEDED_LOCK_KEY)).isFalse();
+
+		assertThat(redisLock.writeUnlessSuperseded(
+			WRITE_UNLESS_SUPERSEDED_LOCK_KEY, "stale-token", WRITE_UNLESS_SUPERSEDED_TARGET_KEY, "DISCONNECTED"))
+			.isTrue();
+
+		assertThat(redisTemplate.opsForValue().get(WRITE_UNLESS_SUPERSEDED_TARGET_KEY)).isEqualTo("DISCONNECTED");
+	}
+
+	@Test
+	@DisplayName("다른 토큰이 이미 락을 넘겨받았으면 조건부 쓰기를 건너뛰고 타깃 키를 건드리지 않는다")
+	void writeUnlessSupersededSkipsWhenAnotherTokenAlreadyTookOverTheLock() {
+		Optional<String> newLeaderToken = redisLock.tryLock(WRITE_UNLESS_SUPERSEDED_LOCK_KEY, LONG_ENOUGH_TTL);
+		assertThat(newLeaderToken).isPresent();
+		redisTemplate.opsForValue().set(WRITE_UNLESS_SUPERSEDED_TARGET_KEY, "CONNECTED");
+
+		assertThat(redisLock.writeUnlessSuperseded(
+			WRITE_UNLESS_SUPERSEDED_LOCK_KEY, "stale-previous-leader-token", WRITE_UNLESS_SUPERSEDED_TARGET_KEY,
+			"DISCONNECTED"))
+			.isFalse();
+
+		assertThat(redisTemplate.opsForValue().get(WRITE_UNLESS_SUPERSEDED_TARGET_KEY)).isEqualTo("CONNECTED");
 	}
 }

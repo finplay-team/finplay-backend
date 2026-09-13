@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.finplay.api.domain.market.store.PriceStore;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -13,6 +14,7 @@ class BithumbFeedLifecycleConditionalTest {
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
 		.withBean(BithumbFeedClient.class, () -> mock(BithumbFeedClient.class))
 		.withBean(BithumbFeedLeaderLock.class, BithumbFeedLifecycleConditionalTest::mockLeaderLockWithValidTtl)
+		.withBean(PriceStore.class, () -> mock(PriceStore.class))
 		.withUserConfiguration(BithumbFeedLifecycle.class, BithumbFeedImmediateLifecycle.class);
 
 	private static BithumbFeedLeaderLock mockLeaderLockWithValidTtl() {

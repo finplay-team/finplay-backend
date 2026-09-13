@@ -18,4 +18,20 @@
         <Field name="session" />
         <Bug pattern="EI_EXPOSE_REP2" />
     </Match>
+    <!-- 재현 확인(이슈 #564): ai/agent-mistakes.md 2026-07-30 패턴 — 빈에 @Value 주입 파라미터가 하나라도 있으면
+         Lombok @RequiredArgsConstructor를 쓸 수 없어 생성자를 손으로 쓰는데, 2026-07-29 패턴대로 손으로 쓴
+         생성자의 필드 저장만 EI_EXPOSE_REP2로 잡힌다(Lombok이 생성한 동일 패턴은 잡히지 않음, 프로브로 확인된
+         SpotBugs 특성). BithumbFeedLeaderLock(lock-ttl-seconds)·BithumbFeedLifecycle(election-interval-ms)
+         둘 다 election-interval-ms 값을 @Value로 받아야 해서 이 패턴을 피할 수 없다. 클래스+필드+버그패턴
+         3중으로 좁혀 다른 EI_EXPOSE_REP2 오탐까지 함께 숨기지 않는다. -->
+    <Match>
+        <Class name="com.finplay.api.domain.market.feed.BithumbFeedLeaderLock" />
+        <Field name="redisLock" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+    <Match>
+        <Class name="com.finplay.api.domain.market.feed.BithumbFeedLifecycle" />
+        <Field name="bithumbFeedLeaderLock" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
 </FindBugsFilter>

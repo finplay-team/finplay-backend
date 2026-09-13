@@ -121,6 +121,33 @@ class BithumbFeedLeaderLockTest {
 
 	@Test
 	@SuppressWarnings("unchecked")
+	void writeUnlessSupersededReturnsTrueAndPassesLockKeyTargetKeyTokenAndValueToTheScript() {
+		BithumbFeedLeaderLock lock = leaderLock(LOCK_TTL_SECONDS);
+		when(redisTemplate.execute((RedisScript<Long>)any(RedisScript.class), anyList(), any(), any()))
+			.thenReturn(1L);
+
+		boolean written = lock.writeUnlessSuperseded("some-token", "feed:crypto:status", "DISCONNECTED");
+
+		assertThat(written).isTrue();
+		verify(redisTemplate).execute(
+			(RedisScript<Long>)any(RedisScript.class), eq(List.of(LOCK_KEY, "feed:crypto:status")), eq("some-token"),
+			eq("DISCONNECTED"));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void writeUnlessSupersededReturnsFalseWhenAnotherTokenAlreadyTookOver() {
+		BithumbFeedLeaderLock lock = leaderLock(LOCK_TTL_SECONDS);
+		when(redisTemplate.execute((RedisScript<Long>)any(RedisScript.class), anyList(), any(), any()))
+			.thenReturn(0L);
+
+		boolean written = lock.writeUnlessSuperseded("stale-token", "feed:crypto:status", "DISCONNECTED");
+
+		assertThat(written).isFalse();
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
 	void unlockExecutesTheCheckThenDeleteScriptWithTheLockKeyAndGivenToken() {
 		BithumbFeedLeaderLock lock = leaderLock(LOCK_TTL_SECONDS);
 		when(redisTemplate.execute((RedisScript<Long>)any(RedisScript.class), anyList(), any())).thenReturn(1L);

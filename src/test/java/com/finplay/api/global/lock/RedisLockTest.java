@@ -59,6 +59,18 @@ class RedisLockTest {
 			.thenThrow(new RuntimeException("Redis 장애"));
 	}
 
+	@SuppressWarnings("unchecked")
+	private void givenWriteUnlessSupersededScriptReturns(Long result) {
+		when(redisTemplate.execute((RedisScript<Long>)any(RedisScript.class), anyList(), any(), any()))
+			.thenReturn(result);
+	}
+
+	@SuppressWarnings("unchecked")
+	private void givenWriteUnlessSupersededScriptThrows() {
+		when(redisTemplate.execute((RedisScript<Long>)any(RedisScript.class), anyList(), any(), any()))
+			.thenThrow(new RuntimeException("Redis 장애"));
+	}
+
 	@Test
 	@DisplayName("스크립트가 1을 반환하면 RELEASED다")
 	void unlockReturnsReleasedWhenTheScriptDeletedTheKey() {
@@ -163,6 +175,65 @@ class RedisLockTest {
 
 		verify(redisTemplate).execute(
 			(RedisScript<Long>)any(RedisScript.class), eq(List.of(KEY)), eq(TOKEN), eq("30000"));
+	}
+
+	@Test
+	@DisplayName("스크립트가 1을 반환하면(내 토큰이거나 아무도 없음) 조건부 쓰기에 성공한다")
+	void writeUnlessSupersededReturnsTrueWhenTheScriptWrites() {
+		givenWriteUnlessSupersededScriptReturns(1L);
+
+		assertThat(redisLock.writeUnlessSuperseded(KEY, TOKEN, "target:key", "target-value")).isTrue();
+	}
+
+	@Test
+	@DisplayName("스크립트가 0을 반환하면(다른 토큰이 이미 자리를 넘겨받음) 조건부 쓰기를 건너뛴다")
+	void writeUnlessSupersededReturnsFalseWhenAnotherTokenAlreadyHoldsTheKey() {
+		givenWriteUnlessSupersededScriptReturns(0L);
+
+		assertThat(redisLock.writeUnlessSuperseded(KEY, TOKEN, "target:key", "target-value")).isFalse();
+	}
+
+	@Test
+	@DisplayName("스크립트가 null을 반환해도 언박싱 NPE 없이 쓰기 실패로 본다")
+	void writeUnlessSupersededReturnsFalseWithoutUnboxingWhenTheScriptReturnsNull() {
+		givenWriteUnlessSupersededScriptReturns(null);
+
+		assertThat(redisLock.writeUnlessSuperseded(KEY, TOKEN, "target:key", "target-value")).isFalse();
+	}
+
+	@Test
+	@DisplayName("Redis가 예외를 던지면 조건부 쓰기 실패로 삼킨다")
+	void writeUnlessSupersededReturnsFalseWhenRedisThrows() {
+		givenWriteUnlessSupersededScriptThrows();
+
+		assertThat(redisLock.writeUnlessSuperseded(KEY, TOKEN, "target:key", "target-value")).isFalse();
+	}
+
+	@Test
+	@DisplayName("Redis 장애로 조건부 쓰기에 실패하면 이 클래스가 WARN에 예외를 함께 남긴다")
+	void writeUnlessSupersededLogsTheRedisFailureWithTheThrowable() {
+		givenWriteUnlessSupersededScriptThrows();
+
+		List<ILoggingEvent> logs = capturingLogs(
+			() -> redisLock.writeUnlessSuperseded(KEY, TOKEN, "target:key", "target-value"));
+
+		assertThat(logs).singleElement().satisfies(event -> {
+			assertThat(event.getLevel()).isEqualTo(Level.WARN);
+			assertThat(event.getFormattedMessage()).contains("Redis 장애");
+			assertThat(event.getThrowableProxy()).isNotNull();
+		});
+	}
+
+	@Test
+	@DisplayName("조건부 쓰기는 원본 락 키·타깃 키를 KEYS로, 토큰·타깃 값을 ARGV로 스크립트에 전달한다")
+	@SuppressWarnings("unchecked")
+	void writeUnlessSupersededPassesLockKeyTargetKeyTokenAndTargetValueToTheScript() {
+		givenWriteUnlessSupersededScriptReturns(1L);
+
+		redisLock.writeUnlessSuperseded(KEY, TOKEN, "target:key", "target-value");
+
+		verify(redisTemplate).execute(
+			(RedisScript<Long>)any(RedisScript.class), eq(List.of(KEY, "target:key")), eq(TOKEN), eq("target-value"));
 	}
 
 	@Test

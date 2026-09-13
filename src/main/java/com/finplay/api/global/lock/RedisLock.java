@@ -25,6 +25,12 @@ public class RedisLock {
 			+ "else return 0 end",
 		Long.class);
 
+	private static final RedisScript<Long> WRITE_UNLESS_SUPERSEDED_SCRIPT = new DefaultRedisScript<>(
+		"local current = redis.call('get', KEYS[1]) "
+			+ "if current == false or current == ARGV[1] then redis.call('set', KEYS[2], ARGV[2]) return 1 "
+			+ "else return 0 end",
+		Long.class);
+
 	private final StringRedisTemplate redisTemplate;
 
 	public Optional<String> tryLock(String key, Duration ttl) {
@@ -57,6 +63,17 @@ public class RedisLock {
 			return renewed != null && renewed == 1L;
 		} catch (RuntimeException ex) {
 			log.warn("Redis 락 갱신 실패(Redis 장애) - key={}", key, ex);
+			return false;
+		}
+	}
+
+	public boolean writeUnlessSuperseded(String key, String token, String targetKey, String targetValue) {
+		try {
+			Long written = redisTemplate
+				.execute(WRITE_UNLESS_SUPERSEDED_SCRIPT, List.of(key, targetKey), token, targetValue);
+			return written != null && written == 1L;
+		} catch (RuntimeException ex) {
+			log.warn("Redis 조건부 쓰기 실패(Redis 장애) - key={}, targetKey={}", key, targetKey, ex);
 			return false;
 		}
 	}

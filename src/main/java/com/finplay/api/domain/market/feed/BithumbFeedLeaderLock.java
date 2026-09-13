@@ -37,6 +37,10 @@ public class BithumbFeedLeaderLock {
 		return lockTtl.getSeconds();
 	}
 
+	public boolean writeUnlessSuperseded(String token, String targetKey, String targetValue) {
+		return redisLock.writeUnlessSuperseded(LOCK_KEY, token, targetKey, targetValue);
+	}
+
 	public void unlock(String token) {
 		if (redisLock.unlock(LOCK_KEY, token) == RedisLock.UnlockResult.NOT_HELD) {
 			log.warn(

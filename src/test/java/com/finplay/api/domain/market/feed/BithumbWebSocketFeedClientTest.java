@@ -417,6 +417,46 @@ class BithumbWebSocketFeedClientTest {
 	}
 
 	@Test
+	@DisplayName("stepDown() 이후 뒤늦게 도착한 이전 세대의 연결 성공 콜백은 CONNECTED 기록도 구독도 하지 않는다 "
+		+ "(이슈 #564 재리뷰 차단 2 — lifecycleLock이 세션 등록부터 상태 게시·구독까지 전부 감싼다)")
+	void staleConnectionEstablishedAfterStepDownDoesNotClaimConnectedOrSubscribe() throws Exception {
+		BithumbWebSocketFeedClient.ConnectionSession staleHandler = startAndGetHandler();
+		when(session.isOpen()).thenReturn(true);
+
+		client.stepDown();
+		staleHandler.afterConnectionEstablished(session);
+
+		verify(priceStore, never()).saveConnectionStatus(any());
+		verify(instrumentRepository, never())
+			.findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(any(Market.class));
+		verify(session, never()).sendMessage(any());
+		verify(session, times(1)).close(CloseStatus.NORMAL);
+	}
+
+	@Test
+	@DisplayName("stop() 이후 뒤늦게 도착한 이전 세대의 메시지는 틱·캔들을 저장하지 않는다 (이슈 #564 재리뷰 차단 2)")
+	void staleHandleTextMessageAfterStopDoesNotSaveTickOrRecordTrade() {
+		BithumbWebSocketFeedClient.ConnectionSession staleHandler = startAndGetHandler();
+		client.stop();
+		String payload = """
+			{
+			  "type": "ticker",
+			  "content": {
+			    "symbol": "BTC_KRW",
+			    "closePrice": "52000000",
+			    "date": "20260730",
+			    "time": "153000"
+			  }
+			}
+			""";
+
+		staleHandler.handleTextMessage(session, new TextMessage(payload));
+
+		verify(priceStore, never()).saveTick(any(), any(), any());
+		verify(candleStore, never()).recordTrade(any(), any(), any(), any());
+	}
+
+	@Test
 	@DisplayName("afterConnectionEstablished와 stop()을 실제로 동시에 실행해도 확립된 세션이 닫히지 않은 채 남지 않는다 "
 		+ "(이슈 #564 재리뷰 차단 2 — check-then-act 레이스 재현, CountDownLatch로 실제 스레드 두 개를 동시에 돌린다)")
 	void concurrentEstablishAndStopNeverLeavesAnOrphanedOpenSession() throws Exception {
