@@ -1,5 +1,14 @@
 # CD 런북 — `dev` 머지 자동 배포
 
+> **2026-09-14 정정 — 이 문서는 EC2 1대 블루-그린 시절의 기록이다.** 배포 아키텍처가
+> [ADR-0030](../ai/adr/0030-rolling-deploy-multi-instance.md)으로 웹 EC2 2대 + 스케줄러
+> 1대 롤링 배포로 바뀌었고, 인프라 자체도 콘솔 수동 설정 대신 `infra/terraform/`으로
+> 코드화됐다. 아래의 "블루-그린 타깃 그룹 2개"·`EC2_INSTANCE_ID`(단수)·`TG_BLUE_ARN`·
+> `TG_GREEN_ARN` 등 콘솔 수동 설정 절차와 GitHub Variables 이름은 더 이상 유효하지 않다 —
+> 새 GitHub Variables 이름과 값은 `infra/terraform/outputs.tf`가 정본이다(`terraform
+> output`으로 확인). 이 문서는 이 파이프라인이 처음 만들어진 과정의 역사적 기록으로 남겨
+> 두며, 지금 다시 구축할 때는 여기 절차를 따르지 말고 ADR-0030 + `infra/terraform/`을 본다.
+
 > **이 문서는 아직 "돌고 있는 파이프라인"의 기록이 아니다.** 2026-08-13 기준 `.github/workflows/deploy.yml`은 PR #357로 작성됐고 AWS 콘솔 설정(OIDC·IAM 역할·ECR·EC2 권한·GitHub Variables)도 완료됐지만, **파이프라인이 실제로 한 번도 실행된 적은 없다.** 이 문서는 [ADR-0021](../ai/adr/0021-continuous-deployment.md)이 결정한 목표 구조를 **구축 순서와 실패 대응까지 포함해 옮긴 것**이며, 각 항목은 실제로 수행한 시점에 체크한다.
 >
 > 결정의 근거·대안은 ADR-0021이 정본이다. 배포 아키텍처(EC2 + RDS·ElastiCache·S3 + 블루-그린) 자체는 [ADR-0020](../ai/adr/0020-managed-service-deployment.md)이 정본이다. **수동 배포 절차는 폐기하지 않는다** — 파이프라인이 막혔을 때의 폴백으로 [`README.md`](README.md)에 남아 있다.
@@ -58,9 +67,25 @@ IaC를 쓰지 않으므로 **이 절이 사실상 유일한 정본이다** (ADR-
   | ALB 전환 | `elasticloadbalancing:DescribeListeners`·`DescribeTargetHealth`·`ModifyListener` | 해당 리스너·타깃 그룹 |
 - [x] 역할 ARN(`arn:aws:iam::951532862726:role/finplay-cd-deploy-role`)을 GitHub 리포지터리 **Variable**(시크릿 아님)로 등록 완료.
 
-`deploy.yml`이 실제로 참조하는 GitHub 리포지터리 Variable 이름은 다음 7개다 — 워크플로우 파일을 거꾸로 뒤져 이름을 맞출 필요 없이 여기서 확인한다.
+> **2026-09-14 정정 — 아래 표는 EC2 1대 블루-그린 시절의 변수 목록이라 지금은 안 맞는다.**
+> 롤링 배포 전환(ADR-0030) 이후 `deploy.yml`이 실제로 참조하는 GitHub 리포지터리 Variable
+> 6개는 다음과 같다. 값은 `terraform output`으로 확인한다(`infra/terraform/outputs.tf`가 정본).
+>
+> | Variable | 값의 출처 |
+> |---|---|
+> | `AWS_REGION` | `terraform output aws_region` (고정값 `ap-northeast-2`) |
+> | `AWS_ROLE_ARN` | `terraform output cd_role_arn` |
+> | `ECR_REPOSITORY` | `terraform output ecr_repository` |
+> | `WEB_TARGET_GROUP_ARN` | `terraform output web_target_group_arn` |
+> | `WEB_INSTANCE_IDS` | `terraform output -json web_instance_ids` (배열, 예: `["i-...","i-..."]`) |
+> | `SCHEDULER_INSTANCE_ID` | `terraform output scheduler_instance_id` |
+>
+> `ALB_LISTENER_ARN`·`TG_BLUE_ARN`·`TG_GREEN_ARN`은 더 이상 쓰지 않는다 — 타깃 그룹이
+> 하나뿐이라 리스너 가중치를 전환하는 로직 자체가 없어졌다.
 
-| Variable | 값의 출처 |
+아래는 블루-그린 시절 참고용으로 남겨 둔 옛 표다.
+
+| Variable (폐기됨) | 값의 출처 |
 |---|---|
 | `AWS_REGION` | EC2·ALB·ECR이 있는 리전 |
 | `AWS_ROLE_ARN` | 위 §2에서 만든 배포용 역할 ARN |
@@ -96,6 +121,14 @@ IaC를 쓰지 않으므로 **이 절이 사실상 유일한 정본이다** (ADR-
 - 고친 뒤 **워크플로우를 재실행**한다. EC2에 직접 들어가 고치면 그 수정이 다음 배포에서 사라진다.
 
 ### 파이프라인이 ⑥(전환) 이후 실패했다
+
+> **2026-09-14 정정 — 이 절의 "리스너를 이전 색으로 되돌린다" 절차는 리스너 가중치
+> 전환(블루-그린) 전제라 지금 파이프라인엔 안 맞는다.** 타깃 그룹이 하나뿐이라 색·리스너
+> 기본 작업 전환 자체가 없다. 지금 파이프라인의 실제 실패 대응은
+> `.github/workflows/deploy.yml`이 정본이다 — SSM 배포 스크립트가 새 이미지를 올리기 전에
+> 직전 이미지 태그를 저장해 두고, 새 이미지가 헬스체크를 통과하지 못하면 그 직전 이미지로
+> 되돌리기를 시도한다. ALB 재등록 단계는 `if: always()`로 배포 성공 여부와 무관하게 항상
+> 실행되어, 실패한 배포라도 인스턴스가 타깃 그룹에서 등록 해제된 채로 남지 않는다.
 
 - 파이프라인이 리스너를 이전 색으로 되돌린다(ADR-0021 §결정 6). **되돌아갔는지 눈으로 확인한다** — ALB 리스너의 기본 작업이 이전 색 타깃 그룹인지.
 - 되돌아가지 않았다면 콘솔에서 직접 리스너 기본 작업을 이전 색으로 바꾼다. 이것이 가장 빠른 복구다.

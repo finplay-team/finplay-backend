@@ -1,0 +1,39 @@
+#!/bin/bash
+# ${role} 인스턴스 부트스트랩. Amazon Linux 2023 (arm64) 기준.
+set -euo pipefail
+
+dnf install -y docker aws-cli
+
+systemctl enable --now docker
+usermod -aG docker ec2-user
+
+mkdir -p /usr/libexec/docker/cli-plugins
+curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-aarch64" \
+  -o /usr/libexec/docker/cli-plugins/docker-compose
+chmod +x /usr/libexec/docker/cli-plugins/docker-compose
+
+dnf install -y https://amazoncloudwatch-agent.s3.amazonaws.com/amazon_linux/arm64/latest/amazon-cloudwatch-agent.rpm
+
+mkdir -p /opt/aws/amazon-cloudwatch-agent/etc
+cat <<'CW_CONFIG_EOF' > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+${cloudwatch_agent_config}
+CW_CONFIG_EOF
+
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config -m ec2 -s \
+  -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+mkdir -p /home/ec2-user/finplay
+cat <<'COMPOSE_EOF' > /home/ec2-user/finplay/compose.deploy.yaml
+${compose_file_content}
+COMPOSE_EOF
+
+mkdir -p /opt/finplay
+cat <<'REFRESH_ENV_EOF' > /opt/finplay/refresh-env.sh
+${refresh_env_script}
+REFRESH_ENV_EOF
+chmod +x /opt/finplay/refresh-env.sh
+
+chown -R ec2-user:ec2-user /home/ec2-user/finplay /opt/finplay
+
+/opt/finplay/refresh-env.sh
