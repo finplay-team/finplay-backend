@@ -164,6 +164,12 @@ jobs:
 
       # 이 인스턴스를 ALB에서 뺀다. 아직 처리 중인 요청은 deregistration_delay(타깃 그룹 설정,
       # 30초)만큼 배수구로 흘려보낸 뒤 완전히 빠진다 — 그 전에 컨테이너를 내리면 그 요청들이 끊긴다.
+      #
+      # describe-target-health가 완전히 빠진 타깃을 조회하면 성공 응답이 아니라 "타깃이 등록돼
+      # 있지 않다" 에러를 던진다 — 그래서 API 호출 자체가 실패하는 것과 "타깃이 다 빠졌다"가
+      # 같은 모양(둘 다 에러)이 된다. 이 둘을 구분하지 않고 아무 에러나 "다 빠졌다"로 오인하면,
+      # 일시적인 스로틀링만으로도 드레이닝이 안 끝난 채 다음 단계(컨테이너 교체)로 넘어가
+      # 처리 중이던 요청을 끊는다. 에러 메시지에 "not registered"가 있을 때만 완료로 본다.
       - name: ALB에서 등록 해제 + draining 대기
         run: |
           aws elbv2 deregister-targets \
@@ -171,20 +177,32 @@ jobs:
             --targets Id=${{ matrix.instance_id }}
 
           for i in $(seq 1 12); do
-            STATE=$(aws elbv2 describe-target-health \
+            if OUTPUT=$(aws elbv2 describe-target-health \
               --target-group-arn "${{ vars.WEB_TARGET_GROUP_ARN }}" \
               --targets Id=${{ matrix.instance_id }} \
-              --query 'TargetHealthDescriptions[0].TargetHealth.State' --output text 2>/dev/null || echo "unused")
-            echo "등록 해제 진행 상태: $STATE ($i/12)"
-            if [ "$STATE" = "unused" ] || [ "$STATE" = "None" ]; then
-              echo "등록 해제 완료"
+              --query 'TargetHealthDescriptions[0].TargetHealth.State' --output text 2>&1); then
+              echo "등록 해제 진행 상태: $OUTPUT ($i/12)"
+              if [ "$OUTPUT" = "unused" ] || [ "$OUTPUT" = "None" ]; then
+                echo "등록 해제 완료"
+                break
+              fi
+            elif echo "$OUTPUT" | grep -qi "not registered\|not found"; then
+              echo "등록 해제 완료 (타깃이 더 이상 그룹에 없음, $i/12)"
               break
+            else
+              echo "describe-target-health 호출 실패(재시도, $i/12): $OUTPUT"
             fi
             sleep 5
           done
 
       # 컨테이너 헬스체크 대기까지 같은 원격 스크립트 안에서 수행한다 — 앱 컨테이너는 호스트에
       # 포트를 열지 않으므로(설계) 러너에서 직접 curl로 확인할 수 없다.
+      #
+      # 새 이미지가 healthy가 안 되면 .env에 남아 있던 이전 APP_IMAGE로 되돌린다 — 예전
+      # 블루-그린은 새 색이 실패해도 이전 색이 그대로 살아 있어 자동으로 안전했는데, 롤링
+      # 배포는 같은 인스턴스에서 컨테이너를 그 자리에서 교체하기 때문에 그 안전장치가 없다.
+      # 롤백에 성공해도 이 SSM 명령 자체는 실패(exit 1)로 끝낸다 — "배포가 실제로는 안 나갔다"는
+      # 사실을 job 실패로 드러내되, 인스턴스는 동작하는 이전 버전으로 남겨 둔다.
       - name: 이미지 교체 + 컨테이너 헬스체크 대기 (SSM)
         id: ssm-deploy
         env:
@@ -196,6 +214,8 @@ jobs:
           cd /home/ec2-user/finplay
           aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin \$(echo "$IMAGE" | cut -d/ -f1)
           docker image prune -af || true
+
+          PREVIOUS_IMAGE=\$(grep -m1 '^APP_IMAGE=' .env | cut -d= -f2-)
           sed -i "s|^APP_IMAGE=.*|APP_IMAGE=$IMAGE|" .env
           docker compose -f compose.deploy.yaml up -d
 
@@ -209,13 +229,32 @@ jobs:
             if [ "\$STATUS" = "unhealthy" ]; then
               echo "컨테이너 unhealthy로 판정됨"
               docker logs finplay-app 2>&1 | grep -A 40 -E "APPLICATION FAILED TO START|Error creating bean|Caused by:|FlywayValidateException|Detected resolved migration" | tail -c 2000 || true
-              exit 1
+              break
             fi
             sleep 5
           done
-          echo "타임아웃 — 3분 안에 healthy가 되지 않았다"
-          docker logs finplay-app 2>&1 | grep -A 40 -E "APPLICATION FAILED TO START|Error creating bean|Caused by:|FlywayValidateException|Detected resolved migration" | tail -c 2000 || true
-          exit 1
+
+          if [ "\$STATUS" != "healthy" ]; then
+            echo "타임아웃 또는 unhealthy — 3분 안에 healthy가 되지 않았다"
+            docker logs finplay-app 2>&1 | grep -A 40 -E "APPLICATION FAILED TO START|Error creating bean|Caused by:|FlywayValidateException|Detected resolved migration" | tail -c 2000 || true
+
+            if [ -n "\$PREVIOUS_IMAGE" ]; then
+              echo "이전 이미지로 롤백: \$PREVIOUS_IMAGE"
+              sed -i "s|^APP_IMAGE=.*|APP_IMAGE=\$PREVIOUS_IMAGE|" .env
+              docker compose -f compose.deploy.yaml up -d
+              for i in \$(seq 1 24); do
+                STATUS=\$(docker inspect --format '{{.State.Health.Status}}' finplay-app 2>/dev/null || echo starting)
+                if [ "\$STATUS" = "healthy" ]; then
+                  echo "롤백한 이전 이미지가 healthy — 이 인스턴스는 이전 버전으로 계속 트래픽을 받을 수 있다"
+                  break
+                fi
+                sleep 5
+              done
+            else
+              echo "롤백할 이전 이미지가 없다(최초 배포로 추정) — 이 인스턴스는 컨테이너가 없는 상태로 남는다"
+            fi
+            exit 1
+          fi
           SCRIPT
 
           jq -n --rawfile script deploy-remote.sh '{commands: ($script | rtrimstr("\n") | split("\n"))}' > ssm-params.json
@@ -259,29 +298,37 @@ jobs:
           fi
 
           if [ "$STATUS" != "Success" ]; then
-            echo "::error::SSM 명령 실패 — 이 인스턴스(${{ matrix.instance_id }})는 아직 ALB에 등록되지 않은 상태다"
+            echo "::error::SSM 명령 실패 — 이전 이미지로 롤백을 시도했을 수 있다(위 stdout 참고). 다음 단계에서 이 인스턴스를 다시 ALB에 등록한다."
             exit 1
           fi
 
+      # if: always() — 앞 단계가 실패했어도(롤백됐든 안 됐든) 이 인스턴스를 ALB에서 영영
+      # 빼놓지 않는다. 컨테이너가 실제로 unhealthy면 ALB 자체가 트래픽을 안 보내므로 안전하고,
+      # 롤백이 성공했다면(이전 이미지가 healthy) 그 상태로 트래픽을 다시 받을 수 있다 — 등록
+      # 해제된 채로 방치되는 것보다 항상 낫다.
       - name: ALB에 재등록 + healthy 대기
+        if: always()
         run: |
           aws elbv2 register-targets \
             --target-group-arn "${{ vars.WEB_TARGET_GROUP_ARN }}" \
             --targets Id=${{ matrix.instance_id }}
 
           for i in $(seq 1 24); do
-            STATE=$(aws elbv2 describe-target-health \
+            if STATE=$(aws elbv2 describe-target-health \
               --target-group-arn "${{ vars.WEB_TARGET_GROUP_ARN }}" \
               --targets Id=${{ matrix.instance_id }} \
-              --query 'TargetHealthDescriptions[0].TargetHealth.State' --output text)
-            echo "ALB 타깃 상태: $STATE ($i/24)"
-            if [ "$STATE" = "healthy" ]; then
-              echo "재등록 완료 — 이 인스턴스는 다시 트래픽을 받는다"
-              exit 0
+              --query 'TargetHealthDescriptions[0].TargetHealth.State' --output text 2>&1); then
+              echo "ALB 타깃 상태: $STATE ($i/24)"
+              if [ "$STATE" = "healthy" ]; then
+                echo "재등록 완료 — 이 인스턴스는 다시 트래픽을 받는다"
+                exit 0
+              fi
+            else
+              echo "describe-target-health 호출 실패(재시도, $i/24): $STATE"
             fi
             sleep 10
           done
-          echo "::error::타임아웃 — 재등록 후 healthy가 되지 않았다"
+          echo "::error::타임아웃 — 재등록 후 healthy가 되지 않았다. 인스턴스는 등록은 됐지만(ALB가 헬스체크로 트래픽을 막음) 컨테이너 상태를 SSM으로 직접 확인해야 한다."
           exit 1
 
   # 스케줄러 인스턴스는 ALB에 없으므로 등록 해제·재등록·타깃 헬스체크가 필요 없다.
@@ -296,6 +343,8 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
+      # 스케줄러는 ALB 대상이 아니라 재등록 안전장치가 없다 — 그래서 롤백 자체가 더 중요하다.
+      # deploy-web과 동일한 롤백 로직(이전 APP_IMAGE로 되돌림)을 그대로 쓴다.
       - name: 이미지 교체 + 컨테이너 헬스체크 대기 (SSM)
         id: ssm-deploy
         env:
@@ -307,6 +356,8 @@ jobs:
           cd /home/ec2-user/finplay
           aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin \$(echo "$IMAGE" | cut -d/ -f1)
           docker image prune -af || true
+
+          PREVIOUS_IMAGE=\$(grep -m1 '^APP_IMAGE=' .env | cut -d= -f2-)
           sed -i "s|^APP_IMAGE=.*|APP_IMAGE=$IMAGE|" .env
           docker compose -f compose.deploy.yaml up -d
 
@@ -318,13 +369,32 @@ jobs:
             fi
             if [ "\$STATUS" = "unhealthy" ]; then
               docker logs finplay-app 2>&1 | grep -A 40 -E "APPLICATION FAILED TO START|Error creating bean|Caused by:|FlywayValidateException|Detected resolved migration" | tail -c 2000 || true
-              exit 1
+              break
             fi
             sleep 5
           done
-          echo "타임아웃 — 3분 안에 healthy가 되지 않았다"
-          docker logs finplay-app 2>&1 | grep -A 40 -E "APPLICATION FAILED TO START|Error creating bean|Caused by:|FlywayValidateException|Detected resolved migration" | tail -c 2000 || true
-          exit 1
+
+          if [ "\$STATUS" != "healthy" ]; then
+            echo "타임아웃 또는 unhealthy — 3분 안에 healthy가 되지 않았다"
+            docker logs finplay-app 2>&1 | grep -A 40 -E "APPLICATION FAILED TO START|Error creating bean|Caused by:|FlywayValidateException|Detected resolved migration" | tail -c 2000 || true
+
+            if [ -n "\$PREVIOUS_IMAGE" ]; then
+              echo "이전 이미지로 롤백: \$PREVIOUS_IMAGE"
+              sed -i "s|^APP_IMAGE=.*|APP_IMAGE=\$PREVIOUS_IMAGE|" .env
+              docker compose -f compose.deploy.yaml up -d
+              for i in \$(seq 1 24); do
+                STATUS=\$(docker inspect --format '{{.State.Health.Status}}' finplay-app 2>/dev/null || echo starting)
+                if [ "\$STATUS" = "healthy" ]; then
+                  echo "롤백한 이전 이미지가 healthy"
+                  break
+                fi
+                sleep 5
+              done
+            else
+              echo "롤백할 이전 이미지가 없다(최초 배포로 추정)"
+            fi
+            exit 1
+          fi
           SCRIPT
 
           jq -n --rawfile script deploy-remote.sh '{commands: ($script | rtrimstr("\n") | split("\n"))}' > ssm-params.json
@@ -353,13 +423,21 @@ jobs:
             fi
           done
 
+          echo "--- stdout ---"
           aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
-            --query StandardOutputContent --output text
+            --query StandardOutputContent --output text | tee ssm-stdout.txt
+          echo "--- stderr ---"
           aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
-            --query StandardErrorContent --output text
+            --query StandardErrorContent --output text | tee ssm-stderr.txt
+
+          if grep -qE "Detected resolved migration not applied to database|FlywayValidateException|Migrations have failed validation" ssm-stdout.txt ssm-stderr.txt; then
+            DETAIL=$(grep -hoE "Detected resolved migration not applied to database: [0-9]+" ssm-stdout.txt ssm-stderr.txt | head -1 || true)
+            DETAIL=${DETAIL:-"Flyway validate 실패 (자세한 문장은 위 stdout 참고)"}
+            echo "::error::원인은 Flyway 마이그레이션이다 — $DETAIL."
+          fi
 
           if [ "$STATUS" != "Success" ]; then
-            echo "::error::스케줄러 인스턴스 배포 실패"
+            echo "::error::스케줄러 인스턴스 배포 실패 — 이전 이미지로 롤백을 시도했을 수 있다(위 stdout 참고)"
             exit 1
           fi
 
