@@ -21,8 +21,11 @@ output "web_target_group_arn" {
   value = aws_lb_target_group.web.arn
 }
 
+# deploy.yml의 strategy.matrix.instance_id가 fromJson(vars.WEB_INSTANCE_IDS)를 그대로
+# matrix 차원으로 쓰므로, 배열(["i-...", "i-..."])이어야 한다 — {이름: ID} 객체를 넣으면
+# matrix가 의도한 대로 인스턴스 ID 목록을 순회하지 않는다(PR #569 리뷰에서 지적, 실측 확인).
 output "web_instance_ids" {
-  value = { for name, inst in aws_instance.web : name => inst.id }
+  value = [for name, inst in aws_instance.web : inst.id]
 }
 
 output "scheduler_instance_id" {

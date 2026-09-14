@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     outputs:
       tag: ${{ steps.image.outputs.tag }}
-      image: ${{ steps.image.outputs.image }}
+      image: ${{ steps.build-push.outputs.image }}
     steps:
       # image_tag는 이후 ECR 태그·SSM 원격 명령에 그대로 쓰인다 — checkout보다 먼저, 커밋 SHA
       # 형식인지부터 검증해 특수문자 섞인 입력이 원격 스크립트를 깨뜨리는 것을 막는다.
