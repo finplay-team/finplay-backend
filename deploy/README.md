@@ -105,24 +105,24 @@ docker exec finplay-app bash -c 'timeout 5 cat < /dev/null > /dev/tcp/<엔드포
 - [ ] 리전은 SDK 기본 리전 프로바이더 체인(`AWS_REGION` 표준 환경변수 또는 인스턴스 메타데이터)에 맡긴다 — 이 프로젝트 전용 리전 설정 키를 추가하지 않는다.
 - [ ] `compose.deploy.yaml`의 `app` 서비스에 이미지 볼륨을 새로 붙이지 않는다 — ADR-0020 §결정 3이 "볼륨을 붙이면 그 파일이 다시 인스턴스에 묶여 이 ADR의 목적을 되돌린다"고 명시했다. 이 배포 스택은 볼륨 없이 그대로 유지한다.
 
-## 기존 로컬 업로드 파일 이관 (블루-그린 전환 전 1회)
+## 기존 로컬 업로드 파일 이관 (다중 인스턴스 전환 전 1회)
 
 `CommunityPostImage.storedFilename`은 `UUID+확장자`뿐인 순수 키라 저장소 위치 정보를 담지 않는다 — 이관은 "같은 키로 바이트를 로컬 디스크에서 S3로 복사"하는 것만으로 끝나고, DB 마이그레이션·엔티티 변경은 필요 없다.
 
-1. **이관 대상이 실제로 있는지 먼저 확인한다.** 이 프로젝트는 아직 실사용자 트래픽 이전 단계이고(ADR-0020 §후속), 현재 배포된 EC2가 블루-그린 전환 전 유일한 스택이다. 그 인스턴스에 SSH로 접속해 `${COMMUNITY_IMAGE_STORAGE_DIR}`(compose.deploy.yaml 기준 컨테이너 내부 `./data/community-images`)에 파일이 몇 개나 있는지 확인한다.
+1. **이관 대상이 실제로 있는지 먼저 확인한다.** 이 프로젝트는 아직 실사용자 트래픽 이전 단계이고(ADR-0020 §후속), 현재 배포된 EC2가 다중 인스턴스 전환 전 유일한 스택이다. 그 인스턴스에 SSH로 접속해 `${COMMUNITY_IMAGE_STORAGE_DIR}`(compose.deploy.yaml 기준 컨테이너 내부 `./data/community-images`)에 파일이 몇 개나 있는지 확인한다.
    ```bash
    docker exec <app 컨테이너> find /app/data/community-images -type f | wc -l
    ```
 2. **판단 기준.**
-   - 파일이 없거나 소수(운영 검증용 테스트 데이터 수준)면 — 이관 스크립트를 만들지 않는다. 배포 전환(첫 그린 스택을 S3 프로필로 띄우는 시점) 후 기존 데이터는 폐기하고, 필요하면 사용자에게 재업로드를 안내한다. 1회성 이관 자동화를 만드는 비용이 이 팀 규모에서는 더 크다.
-   - 파일이 실사용 데이터 수준으로 있으면 — 아래 1회성 스크립트를 블루-그린 전환 직전에 실행한다.
+   - 파일이 없거나 소수(운영 검증용 테스트 데이터 수준)면 — 이관 스크립트를 만들지 않는다. 전환(새 인스턴스를 S3 프로필로 띄우는 시점) 후 기존 데이터는 폐기하고, 필요하면 사용자에게 재업로드를 안내한다. 1회성 이관 자동화를 만드는 비용이 이 팀 규모에서는 더 크다.
+   - 파일이 실사용 데이터 수준으로 있으면 — 아래 1회성 스크립트를 다중 인스턴스 전환 직전에 실행한다.
 3. **이관 스크립트 (실사용 데이터가 있을 때만).**
    ```bash
-   # EC2 인스턴스 위에서, 블루-그린 전환 직전 1회 실행
+   # EC2 인스턴스 위에서, 다중 인스턴스 전환 직전 1회 실행
    aws s3 sync /path/to/mounted/data/community-images s3://${COMMUNITY_S3_BUCKET}/ \
      --exclude "*" --include "*.jpg" --include "*.png" --include "*.webp"
    ```
-   `aws s3 sync`가 로컬 파일명(=`stored_filename`)을 그대로 S3 키로 쓰므로 DB의 `stored_filename` 값과 키가 자동으로 일치한다. 이 동기화가 끝난 뒤에만 새 그린 스택(S3 프로필)으로 트래픽을 넘긴다 — 이관 완료 확인은 블루-그린 헬스체크 절차에 사람이 체크하는 항목으로 추가하고 자동화하지 않는다.
+   `aws s3 sync`가 로컬 파일명(=`stored_filename`)을 그대로 S3 키로 쓰므로 DB의 `stored_filename` 값과 키가 자동으로 일치한다. 이 동기화가 끝난 뒤에만 새 인스턴스(S3 프로필)로 트래픽을 넘긴다 — 이관 완료 확인은 롤링 배포 첫 실행 시 사람이 체크하는 항목으로 추가하고 자동화하지 않는다.
 4. 이관 여부와 관계없이 `compose.deploy.yaml`에는 이미지 볼륨을 붙이지 않는다(위 체크리스트와 동일 판단).
 
 ## 알려진 제약 — HTTP 배포에서는 OAuth 로그인이 안 된다
@@ -139,8 +139,8 @@ docker exec finplay-app bash -c 'timeout 5 cat < /dev/null > /dev/tcp/<엔드포
 
 ## 아직 하지 않은 것
 
-- **HTTPS** — `http://<EC2-IP>:8080/` 기준이다. ADR-0020의 결정은 **ALB에 ACM 인증서를 붙이는 것**이다(블루-그린 전환과 같은 인프라를 쓴다). 별도 이슈.
-- **블루-그린 무중단 배포** — `compose.bluegreen.yaml`(8081/8082)은 **작성 완료**이고 nginx는 제거됐다(ADR-0022, 이슈 #332→#352). ALB·타깃 그룹 2개·ACM은 아직 없다. 별도 이슈. 지금 이 문서의 절차는 단일 스택 교체(재배포 시 40초 안팎 중단)다.
-- **S3 콘솔 설정·기존 파일 이관 실행** — `S3FileStorageService` 구현은 끝났고(이슈 #330), 위 "S3 업로드 이미지 저장소 설정"·"기존 로컬 업로드 파일 이관" 절에 체크리스트·절차를 남겼다. 실제 버킷 생성·IAM 역할 연결·(필요 시) `aws s3 sync` 실행은 다음 배포 시점에 사람이 수행한다.
-- **배포 자동화(CD)** — ~~수동 배포로 시작한다~~ → **2026-08-12 ADR-0021로 방향이 결정됐다**(이슈 #345). `dev` 머지 트리거 + OIDC/SSM/ECR + 블루-그린 자동 전환 + 직전 색 자동 롤백. **아직 구축 전이다** — `.github/workflows/deploy.yml`도 AWS 설정도 없다. 구축 순서와 실패 대응은 [`cd-runbook.md`](cd-runbook.md).
-- **프론트 연동·SSE의 브라우저 검증은 실제로 완료됐다 (2026-08-12, ADR-0022).** 프론트를 S3에 올리고 EC2(블루-그린 스택)의 `CORS_ALLOWED_ORIGINS`를 그 주소로 맞춘 뒤, 일반 API 호출·`/api/stocks/stream`의 `Authorization` 헤더 포함 preflight가 CORS에 막히지 않고 서버까지 도달하는 것을 브라우저에서 실측했다 — 이슈 #108이 우려한 지점의 반증이다. 이 단일 스택(`compose.deploy.yaml`)은 같은 앱 이미지를 쓰지만 별도로 실측하지는 않았다.
+- **HTTPS** — `infra/terraform/route53.tf`·`alb.tf`가 ALB에 ACM 인증서를 붙이는 것으로 코드화했다([ADR-0030](../ai/adr/0030-rolling-deploy-multi-instance.md)). `terraform apply`가 아직이라 이 문서의 수동 폴백 절차(`http://<EC2-IP>:8080/`)는 여전히 HTTP 기준이다.
+- **블루-그린 무중단 배포** — 폐기됐다([ADR-0030](../ai/adr/0030-rolling-deploy-multi-instance.md)). 웹 인스턴스를 2대로 늘려 둘 다 항상 트래픽을 받게 하고, 배포는 한 대씩 순차로 교체하는 롤링 방식으로 무중단을 얻는 쪽으로 방향이 바뀌었다 — `compose.bluegreen.yaml`은 과거 기록으로만 남아 있다.
+- **S3 콘솔 설정·기존 파일 이관 실행** — 버킷 생성·IAM 역할 연결은 `infra/terraform/s3.tf`·`iam.tf`로 코드화돼 `terraform apply`가 대신한다. 위 "기존 로컬 업로드 파일 이관" 절의 `aws s3 sync` 이관만 여전히 사람이 1회 수행해야 한다.
+- **배포 자동화(CD)** — 완료됐다. `.github/workflows/deploy.yml`이 웹 2대 순차 교체 + 스케줄러 1대 SSM 배포로 구축돼 있다 — 블루-그린 가중치 전환이 아니다. 구축 순서와 실패 대응은 [`cd-runbook.md`](cd-runbook.md).
+- **프론트 연동·SSE의 브라우저 검증은 실제로 완료됐다 (2026-08-12, ADR-0022).** 프론트를 S3에 올리고 EC2(당시 블루-그린 스택)의 `CORS_ALLOWED_ORIGINS`를 그 주소로 맞춘 뒤, 일반 API 호출·`/api/stocks/stream`의 `Authorization` 헤더 포함 preflight가 CORS에 막히지 않고 서버까지 도달하는 것을 브라우저에서 실측했다 — 이슈 #108이 우려한 지점의 반증이다. 이 단일 스택(`compose.deploy.yaml`)은 같은 앱 이미지를 쓰지만 별도로 실측하지는 않았다.
