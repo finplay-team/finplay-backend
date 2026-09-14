@@ -34,6 +34,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -52,6 +53,9 @@ class BithumbRestTickerPollerTest {
 	@Mock
 	private PriceStore priceStore;
 
+	@Mock
+	private BithumbFeedLifecycle bithumbFeedLifecycle;
+
 	private MockRestServiceServer server;
 	private BithumbRestTickerPoller poller;
 
@@ -61,6 +65,17 @@ class BithumbRestTickerPollerTest {
 		server = MockRestServiceServer.bindTo(builder).build();
 		Clock clock = Clock.fixed(FIXED_NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC);
 		poller = new BithumbRestTickerPoller(builder.build(), instrumentRepository, priceStore, clock);
+	}
+
+	private BithumbRestTickerPoller pollerWithLifecycle(RestClient restClient) {
+		ObjectProvider<BithumbFeedLifecycle> lifecycleProvider = new ObjectProvider<>() {
+			@Override
+			public BithumbFeedLifecycle getIfAvailable() {
+				return bithumbFeedLifecycle;
+			}
+		};
+		return new BithumbRestTickerPoller(restClient, instrumentRepository, priceStore,
+			Clock.fixed(FIXED_NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC), lifecycleProvider);
 	}
 
 	private static Instrument crypto(String symbol) {
@@ -249,6 +264,33 @@ class BithumbRestTickerPollerTest {
 		assertThatCode(() -> poller.pollTickers()).doesNotThrowAnyException();
 
 		verifyNoInteractions(priceStore);
+	}
+
+	@Test
+	@DisplayName("BithumbFeedLifecycle이 있고 리더가 아니면 HTTP 호출 자체를 하지 않는다")
+	void pollTickersDoesNotCallHttpWhenLifecyclePresentAndNotLeader() {
+		when(bithumbFeedLifecycle.isLeader()).thenReturn(false);
+		BithumbRestTickerPoller followerPoller = pollerWithLifecycle(RestClient.builder().build());
+
+		followerPoller.pollTickers();
+
+		verifyNoInteractions(instrumentRepository, priceStore);
+	}
+
+	@Test
+	@DisplayName("BithumbFeedLifecycle이 있고 리더이면 평소처럼 폴링한다")
+	void pollTickersCallsHttpWhenLifecyclePresentAndIsLeader() {
+		when(bithumbFeedLifecycle.isLeader()).thenReturn(true);
+		RestClient.Builder builder = RestClient.builder();
+		MockRestServiceServer leaderServer = MockRestServiceServer.bindTo(builder).build();
+		BithumbRestTickerPoller leaderPoller = pollerWithLifecycle(builder.build());
+		givenCryptoInstruments("BTC");
+		leaderServer.expect(requestTo(Matchers.startsWith(ENDPOINT)))
+			.andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
+
+		leaderPoller.pollTickers();
+
+		leaderServer.verify();
 	}
 
 	@Test

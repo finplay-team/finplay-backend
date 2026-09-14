@@ -56,6 +56,10 @@ public class BithumbFeedLifecycle {
 		}
 	}
 
+	public synchronized boolean isLeader() {
+		return leaderToken != null;
+	}
+
 	@PreDestroy
 	public synchronized void stopFeed() {
 		String token = leaderToken;
