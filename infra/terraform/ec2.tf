@@ -46,6 +46,13 @@ resource "aws_instance" "web" {
     Name = each.value
     Role = "web"
   }
+
+  # most_recent=true라 AWS가 새 AL2023 AMI를 내면 다음 plan이 그걸 잡는다 — ami 변경은
+  # 인스턴스 교체를 강제하므로, 이 SG 하나만 고치려던 apply가 웹 2대를 통째로 갈아엎을 수
+  # 있다. AMI 교체는 의도적으로(이 줄을 지우고 apply) 해야 한다.
+  lifecycle {
+    ignore_changes = [ami]
+  }
 }
 
 # 스케줄러 1대 — ALB 타깃 그룹에 등록하지 않는다(트래픽을 받지 않음). 웹 인스턴스와 완전히
@@ -72,5 +79,9 @@ resource "aws_instance" "scheduler" {
   tags = {
     Name = "${var.project_name}-scheduler"
     Role = "scheduler"
+  }
+
+  lifecycle {
+    ignore_changes = [ami]
   }
 }
