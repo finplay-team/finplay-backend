@@ -47,13 +47,15 @@ class PeerStatsBatchServiceTest {
 			holderPopulationQueryService,
 			Clock.fixed(Instant.parse("2026-08-06T06:32:00Z"), ZoneId.of("Asia/Seoul")),
 			feedbackBatchLock);
-		when(feedbackBatchLock.tryLock(any(), eq("scheduled"))).thenReturn(Optional.of("token"));
+		when(feedbackBatchLock.tryLock(any(), eq(FeedbackBatchLock.SCHEDULED_SCOPE)))
+			.thenReturn(Optional.of("token"));
 	}
 
 	@Test
 	void skipsStockPeerStatsWhenLockIsNotAcquired() {
 		givenReadySession();
-		when(feedbackBatchLock.tryLock(FeedbackBatchLock.Batch.PEER_STATS, "scheduled"))
+		when(feedbackBatchLock.tryLock(
+			FeedbackBatchLock.Batch.PEER_STATS, FeedbackBatchLock.SCHEDULED_SCOPE))
 			.thenReturn(Optional.empty());
 
 		service.runPeerStatsBatch();
@@ -71,12 +73,13 @@ class PeerStatsBatchServiceTest {
 			.isInstanceOf(IllegalStateException.class);
 
 		verify(feedbackBatchLock).unlock(
-			FeedbackBatchLock.Batch.PEER_STATS, "scheduled", "token");
+			FeedbackBatchLock.Batch.PEER_STATS, FeedbackBatchLock.SCHEDULED_SCOPE, "token");
 	}
 
 	@Test
 	void skipsCryptoPeerStatsWhenLockIsNotAcquired() {
-		when(feedbackBatchLock.tryLock(FeedbackBatchLock.Batch.CRYPTO_PEER_STATS, "scheduled"))
+		when(feedbackBatchLock.tryLock(
+			FeedbackBatchLock.Batch.CRYPTO_PEER_STATS, FeedbackBatchLock.SCHEDULED_SCOPE))
 			.thenReturn(Optional.empty());
 
 		service.runCryptoPeerStatsBatch();
@@ -94,7 +97,7 @@ class PeerStatsBatchServiceTest {
 			.isInstanceOf(IllegalStateException.class);
 
 		verify(feedbackBatchLock).unlock(
-			FeedbackBatchLock.Batch.CRYPTO_PEER_STATS, "scheduled", "token");
+			FeedbackBatchLock.Batch.CRYPTO_PEER_STATS, FeedbackBatchLock.SCHEDULED_SCOPE, "token");
 	}
 
 	private void givenReadySession() {

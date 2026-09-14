@@ -351,7 +351,8 @@ class NewsCollectionServiceTest {
 	@Test
 	@DisplayName("뉴스 배치 락을 얻지 못하면 종목 조회와 외부 호출을 시작하지 않는다")
 	void skipsNewsCollectionWhenLockIsNotAcquired() {
-		when(feedbackBatchLock.tryLock(FeedbackBatchLock.Batch.NEWS_COLLECTION, "scheduled"))
+		when(feedbackBatchLock.tryLock(
+			FeedbackBatchLock.Batch.NEWS_COLLECTION, FeedbackBatchLock.SCHEDULED_SCOPE))
 			.thenReturn(Optional.empty());
 
 		service.collectNews();
@@ -364,7 +365,8 @@ class NewsCollectionServiceTest {
 	@Test
 	@DisplayName("공시 배치 락을 얻지 못하면 종목 조회와 외부 호출을 시작하지 않는다")
 	void skipsDisclosureCollectionWhenLockIsNotAcquired() {
-		when(feedbackBatchLock.tryLock(FeedbackBatchLock.Batch.DISCLOSURE_COLLECTION, "scheduled"))
+		when(feedbackBatchLock.tryLock(
+			FeedbackBatchLock.Batch.DISCLOSURE_COLLECTION, FeedbackBatchLock.SCHEDULED_SCOPE))
 			.thenReturn(Optional.empty());
 
 		service.collectDisclosures();
@@ -383,7 +385,7 @@ class NewsCollectionServiceTest {
 		assertThatCode(() -> service.collectNews()).isInstanceOf(IllegalStateException.class);
 
 		verify(feedbackBatchLock).unlock(
-			FeedbackBatchLock.Batch.NEWS_COLLECTION, "scheduled", "token");
+			FeedbackBatchLock.Batch.NEWS_COLLECTION, FeedbackBatchLock.SCHEDULED_SCOPE, "token");
 	}
 
 	@Test
@@ -395,7 +397,7 @@ class NewsCollectionServiceTest {
 		assertThatCode(() -> service.collectDisclosures()).isInstanceOf(IllegalStateException.class);
 
 		verify(feedbackBatchLock).unlock(
-			FeedbackBatchLock.Batch.DISCLOSURE_COLLECTION, "scheduled", "token");
+			FeedbackBatchLock.Batch.DISCLOSURE_COLLECTION, FeedbackBatchLock.SCHEDULED_SCOPE, "token");
 	}
 
 	private MarketNewsItem captureSaved() {

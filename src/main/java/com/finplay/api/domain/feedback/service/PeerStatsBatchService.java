@@ -47,7 +47,7 @@ public class PeerStatsBatchService {
 
 		LocalDate originTradeDate = session.sourceTradingDate();
 		LocalDate serviceDate = LocalDate.now(clock);
-		String scope = "scheduled";
+		String scope = FeedbackBatchLock.SCHEDULED_SCOPE;
 		Optional<String> lockToken = feedbackBatchLock.tryLock(FeedbackBatchLock.Batch.PEER_STATS, scope);
 		if (lockToken.isEmpty()) {
 			log.debug("주식 집단 비교 배치 락을 얻지 못해 이번 회차를 건너뛴다. scope={}", scope);
@@ -79,7 +79,7 @@ public class PeerStatsBatchService {
 	@Scheduled(cron = "${feedback.batch.crypto-peer-stats-cron}", zone = "Asia/Seoul")
 	public void runCryptoPeerStatsBatch() {
 		LocalDate targetDate = LocalDate.now(clock).minusDays(1);
-		String scope = "scheduled";
+		String scope = FeedbackBatchLock.SCHEDULED_SCOPE;
 		Optional<String> lockToken = feedbackBatchLock.tryLock(
 			FeedbackBatchLock.Batch.CRYPTO_PEER_STATS, scope);
 		if (lockToken.isEmpty()) {

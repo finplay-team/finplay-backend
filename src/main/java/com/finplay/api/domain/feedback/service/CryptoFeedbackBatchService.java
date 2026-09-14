@@ -25,7 +25,7 @@ public class CryptoFeedbackBatchService {
 
 	@Scheduled(cron = "${feedback.batch.crypto-cron}", zone = "Asia/Seoul")
 	public void refreshCryptoFeedback() {
-		String scope = "scheduled";
+		String scope = FeedbackBatchLock.SCHEDULED_SCOPE;
 		Optional<String> lockToken = feedbackBatchLock.tryLock(
 			FeedbackBatchLock.Batch.CRYPTO_FEEDBACK, scope);
 		if (lockToken.isEmpty()) {

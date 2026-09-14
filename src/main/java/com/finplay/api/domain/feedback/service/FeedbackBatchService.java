@@ -49,7 +49,7 @@ public class FeedbackBatchService {
 
 		LocalDate originTradeDate = session.sourceTradingDate();
 		Optional<String> lockToken = feedbackBatchLock.tryLock(
-			FeedbackBatchLock.Batch.PRE_MARKET, originTradeDate.toString());
+			FeedbackBatchLock.Batch.PRE_MARKET, FeedbackBatchLock.SCHEDULED_SCOPE);
 		if (lockToken.isEmpty()) {
 			log.debug("개장 전 배치 락을 얻지 못해 이번 회차를 건너뛴다. 원본 거래일={}", originTradeDate);
 			return;
@@ -107,7 +107,7 @@ public class FeedbackBatchService {
 			}
 		} finally {
 			feedbackBatchLock.unlock(
-				FeedbackBatchLock.Batch.PRE_MARKET, originTradeDate.toString(), lockToken.get());
+				FeedbackBatchLock.Batch.PRE_MARKET, FeedbackBatchLock.SCHEDULED_SCOPE, lockToken.get());
 		}
 	}
 

@@ -87,7 +87,8 @@ class CryptoFeedbackBatchServiceTest {
 	@Test
 	@DisplayName("코인 피드백 락을 얻지 못하면 종목 조회와 LLM 호출을 시작하지 않는다")
 	void skipsCryptoFeedbackWhenLockIsNotAcquired() {
-		when(feedbackBatchLock.tryLock(FeedbackBatchLock.Batch.CRYPTO_FEEDBACK, "scheduled"))
+		when(feedbackBatchLock.tryLock(
+			FeedbackBatchLock.Batch.CRYPTO_FEEDBACK, FeedbackBatchLock.SCHEDULED_SCOPE))
 			.thenReturn(Optional.empty());
 
 		service.refreshCryptoFeedback();
@@ -107,7 +108,7 @@ class CryptoFeedbackBatchServiceTest {
 			.isInstanceOf(IllegalStateException.class);
 
 		verify(feedbackBatchLock).unlock(
-			FeedbackBatchLock.Batch.CRYPTO_FEEDBACK, "scheduled", "token");
+			FeedbackBatchLock.Batch.CRYPTO_FEEDBACK, FeedbackBatchLock.SCHEDULED_SCOPE, "token");
 	}
 
 	@Test

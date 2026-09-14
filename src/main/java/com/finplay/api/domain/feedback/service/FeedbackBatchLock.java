@@ -15,6 +15,8 @@ public class FeedbackBatchLock {
 
 	private static final String KEY_PREFIX = "feedback:batch:lock:";
 
+	static final String SCHEDULED_SCOPE = "scheduled";
+
 	private final RedisLock redisLock;
 
 	private final FeedbackBatchProperties batchProperties;

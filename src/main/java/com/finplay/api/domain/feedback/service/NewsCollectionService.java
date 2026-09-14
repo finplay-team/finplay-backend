@@ -41,7 +41,7 @@ public class NewsCollectionService {
 
 	@Scheduled(cron = "${feedback.news.collect-cron}", zone = "Asia/Seoul")
 	public void collectNews() {
-		String scope = "scheduled";
+		String scope = FeedbackBatchLock.SCHEDULED_SCOPE;
 		Optional<String> lockToken = feedbackBatchLock.tryLock(
 			FeedbackBatchLock.Batch.NEWS_COLLECTION, scope);
 		if (lockToken.isEmpty()) {
@@ -79,7 +79,7 @@ public class NewsCollectionService {
 
 	@Scheduled(cron = "${feedback.news.disclosure-cron}", zone = "Asia/Seoul")
 	public void collectDisclosures() {
-		String scope = "scheduled";
+		String scope = FeedbackBatchLock.SCHEDULED_SCOPE;
 		Optional<String> lockToken = feedbackBatchLock.tryLock(
 			FeedbackBatchLock.Batch.DISCLOSURE_COLLECTION, scope);
 		if (lockToken.isEmpty()) {

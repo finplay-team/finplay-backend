@@ -421,7 +421,8 @@ class FeedbackBatchServiceTest {
 	@DisplayName("개장 전 배치 락을 얻지 못하면 종목 조회와 하위 작업을 시작하지 않는다")
 	void skipsPreMarketBatchWhenLockIsNotAcquired() {
 		givenReadySessionWithTwoStocks();
-		when(feedbackBatchLock.tryLock(FeedbackBatchLock.Batch.PRE_MARKET, ORIGIN_TRADE_DATE.toString()))
+		when(feedbackBatchLock.tryLock(FeedbackBatchLock.Batch.PRE_MARKET,
+			FeedbackBatchLock.SCHEDULED_SCOPE))
 			.thenReturn(Optional.empty());
 
 		service.runPreMarketBatch();
@@ -443,6 +444,6 @@ class FeedbackBatchServiceTest {
 			.isInstanceOf(IllegalStateException.class);
 
 		verify(feedbackBatchLock).unlock(
-			FeedbackBatchLock.Batch.PRE_MARKET, ORIGIN_TRADE_DATE.toString(), "token");
+			FeedbackBatchLock.Batch.PRE_MARKET, FeedbackBatchLock.SCHEDULED_SCOPE, "token");
 	}
 }
