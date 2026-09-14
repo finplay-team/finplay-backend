@@ -4,6 +4,7 @@ import com.finplay.api.domain.market.entity.Instrument;
 import com.finplay.api.domain.market.entity.Market;
 import com.finplay.api.domain.market.service.InstrumentService;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -20,28 +21,42 @@ public class CryptoFeedbackBatchService {
 
 	private final MarketBriefingService marketBriefingService;
 
+	private final FeedbackBatchLock feedbackBatchLock;
+
 	@Scheduled(cron = "${feedback.batch.crypto-cron}", zone = "Asia/Seoul")
 	public void refreshCryptoFeedback() {
-		List<Instrument> instruments = instrumentService.getRealInstrumentEntities(Market.CRYPTO);
-		log.info("코인 요약·브리핑 갱신을 시작한다. 종목={}건", instruments.size());
-
-		int refreshed = 0;
-		for (Instrument instrument : instruments) {
-			try {
-				if (instrumentNewsSummaryService.refreshCryptoSummary(instrument).isPresent()) {
-					refreshed++;
-				}
-			} catch (RuntimeException ex) {
-				log.warn("코인 요약 갱신에 실패해 이 종목을 건너뛴다. 종목={}", instrument.getId(), ex);
-			}
+		String scope = "scheduled";
+		Optional<String> lockToken = feedbackBatchLock.tryLock(
+			FeedbackBatchLock.Batch.CRYPTO_FEEDBACK, scope);
+		if (lockToken.isEmpty()) {
+			log.debug("코인 요약·브리핑 배치 락을 얻지 못해 이번 회차를 건너뛴다. scope={}", scope);
+			return;
 		}
-
-		boolean briefingRefreshed = false;
 		try {
-			briefingRefreshed = marketBriefingService.refreshCryptoBriefing().isPresent();
-		} catch (RuntimeException ex) {
-			log.warn("코인 브리핑 갱신에 실패해 이 단계를 건너뛴다.", ex);
+			List<Instrument> instruments = instrumentService.getRealInstrumentEntities(Market.CRYPTO);
+			log.info("코인 요약·브리핑 갱신을 시작한다. 종목={}건", instruments.size());
+
+			int refreshed = 0;
+			for (Instrument instrument : instruments) {
+				try {
+					if (instrumentNewsSummaryService.refreshCryptoSummary(instrument).isPresent()) {
+						refreshed++;
+					}
+				} catch (RuntimeException ex) {
+					log.warn("코인 요약 갱신에 실패해 이 종목을 건너뛴다. 종목={}", instrument.getId(), ex);
+				}
+			}
+
+			boolean briefingRefreshed = false;
+			try {
+				briefingRefreshed = marketBriefingService.refreshCryptoBriefing().isPresent();
+			} catch (RuntimeException ex) {
+				log.warn("코인 브리핑 갱신에 실패해 이 단계를 건너뛴다.", ex);
+			}
+			log.info("코인 요약·브리핑 갱신을 마쳤다. 요약={}건 브리핑={}", refreshed, briefingRefreshed);
+		} finally {
+			feedbackBatchLock.unlock(FeedbackBatchLock.Batch.CRYPTO_FEEDBACK, scope, lockToken.get());
 		}
-		log.info("코인 요약·브리핑 갱신을 마쳤다. 요약={}건 브리핑={}", refreshed, briefingRefreshed);
 	}
+
 }

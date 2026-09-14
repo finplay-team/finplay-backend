@@ -12,6 +12,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -36,6 +37,8 @@ public class FeedbackBatchService {
 
 	private final LlmCallStats llmCallStats;
 
+	private final FeedbackBatchLock feedbackBatchLock;
+
 	@Scheduled(cron = "${feedback.batch.cron}", zone = "Asia/Seoul")
 	public void runPreMarketBatch() {
 		StockReplaySessionDto session = stockReplayService.getCurrentReplaySession();
@@ -45,55 +48,66 @@ public class FeedbackBatchService {
 		}
 
 		LocalDate originTradeDate = session.sourceTradingDate();
-		List<Instrument> instruments = instrumentService.getRealInstrumentEntities(Market.STOCK);
-		log.info("개장 전 배치를 시작한다. 원본 거래일={} 종목={}건", originTradeDate, instruments.size());
-
-		long batchStartedNanos = System.nanoTime();
-		llmCallStats.startScope();
+		Optional<String> lockToken = feedbackBatchLock.tryLock(
+			FeedbackBatchLock.Batch.PRE_MARKET, originTradeDate.toString());
+		if (lockToken.isEmpty()) {
+			log.debug("개장 전 배치 락을 얻지 못해 이번 회차를 건너뛴다. 원본 거래일={}", originTradeDate);
+			return;
+		}
 		try {
-			long stepStartedNanos = System.nanoTime();
+			List<Instrument> instruments = instrumentService.getRealInstrumentEntities(Market.STOCK);
+			log.info("개장 전 배치를 시작한다. 원본 거래일={} 종목={}건", originTradeDate, instruments.size());
+
+			long batchStartedNanos = System.nanoTime();
+			llmCallStats.startScope();
 			try {
-				generateMarketBriefing(originTradeDate);
-			} catch (RuntimeException ex) {
-				log.warn("개장 전 브리핑 생성에 실패해 이 단계를 건너뛴다. 원본 거래일={}", originTradeDate, ex);
+				long stepStartedNanos = System.nanoTime();
+				try {
+					generateMarketBriefing(originTradeDate);
+				} catch (RuntimeException ex) {
+					log.warn("개장 전 브리핑 생성에 실패해 이 단계를 건너뛴다. 원본 거래일={}", originTradeDate, ex);
+				}
+				logStepElapsed("브리핑", stepStartedNanos);
+
+				stepStartedNanos = System.nanoTime();
+				try {
+					generateNewsSummaries(instruments, originTradeDate, NewsSummaryScope.PRE_MARKET);
+				} catch (RuntimeException ex) {
+					log.warn("종목 뉴스 요약 생성에 실패해 이 단계를 건너뛴다. 원본 거래일={} 범위={}",
+						originTradeDate, NewsSummaryScope.PRE_MARKET, ex);
+				}
+				logStepElapsed("전장 요약", stepStartedNanos);
+
+				stepStartedNanos = System.nanoTime();
+				List<InstrumentDetections> detections = detectAll(instruments, originTradeDate);
+				logStepElapsed("탐지", stepStartedNanos);
+
+				stepStartedNanos = System.nanoTime();
+				confirmCards(detections, originTradeDate, PriceMoveEventType.OPENING_GAP);
+				logStepElapsed("시가 갭 카드", stepStartedNanos);
+
+				stepStartedNanos = System.nanoTime();
+				confirmCards(detections, originTradeDate, PriceMoveEventType.INTRADAY);
+				logStepElapsed("장중 카드", stepStartedNanos);
+
+				stepStartedNanos = System.nanoTime();
+				try {
+					generateNewsSummaries(instruments, originTradeDate, NewsSummaryScope.FULL);
+				} catch (RuntimeException ex) {
+					log.warn("종목 뉴스 요약 생성에 실패해 이 단계를 건너뛴다. 원본 거래일={} 범위={}",
+						originTradeDate, NewsSummaryScope.FULL, ex);
+				}
+				logStepElapsed("종일 요약", stepStartedNanos);
+
+				LlmCallStats.Snapshot llmCalls = llmCallStats.finishScope();
+				log.info("개장 전 배치를 마쳤다. 원본 거래일={} 소요={}ms LLM호출={}건 LLM소요합={}ms",
+					originTradeDate, elapsedMillis(batchStartedNanos), llmCalls.count(), llmCalls.totalMillis());
+			} finally {
+				llmCallStats.finishScope();
 			}
-			logStepElapsed("브리핑", stepStartedNanos);
-
-			stepStartedNanos = System.nanoTime();
-			try {
-				generateNewsSummaries(instruments, originTradeDate, NewsSummaryScope.PRE_MARKET);
-			} catch (RuntimeException ex) {
-				log.warn("종목 뉴스 요약 생성에 실패해 이 단계를 건너뛴다. 원본 거래일={} 범위={}",
-					originTradeDate, NewsSummaryScope.PRE_MARKET, ex);
-			}
-			logStepElapsed("전장 요약", stepStartedNanos);
-
-			stepStartedNanos = System.nanoTime();
-			List<InstrumentDetections> detections = detectAll(instruments, originTradeDate);
-			logStepElapsed("탐지", stepStartedNanos);
-
-			stepStartedNanos = System.nanoTime();
-			confirmCards(detections, originTradeDate, PriceMoveEventType.OPENING_GAP);
-			logStepElapsed("시가 갭 카드", stepStartedNanos);
-
-			stepStartedNanos = System.nanoTime();
-			confirmCards(detections, originTradeDate, PriceMoveEventType.INTRADAY);
-			logStepElapsed("장중 카드", stepStartedNanos);
-
-			stepStartedNanos = System.nanoTime();
-			try {
-				generateNewsSummaries(instruments, originTradeDate, NewsSummaryScope.FULL);
-			} catch (RuntimeException ex) {
-				log.warn("종목 뉴스 요약 생성에 실패해 이 단계를 건너뛴다. 원본 거래일={} 범위={}",
-					originTradeDate, NewsSummaryScope.FULL, ex);
-			}
-			logStepElapsed("종일 요약", stepStartedNanos);
-
-			LlmCallStats.Snapshot llmCalls = llmCallStats.finishScope();
-			log.info("개장 전 배치를 마쳤다. 원본 거래일={} 소요={}ms LLM호출={}건 LLM소요합={}ms",
-				originTradeDate, elapsedMillis(batchStartedNanos), llmCalls.count(), llmCalls.totalMillis());
 		} finally {
-			llmCallStats.finishScope();
+			feedbackBatchLock.unlock(
+				FeedbackBatchLock.Batch.PRE_MARKET, originTradeDate.toString(), lockToken.get());
 		}
 	}
 

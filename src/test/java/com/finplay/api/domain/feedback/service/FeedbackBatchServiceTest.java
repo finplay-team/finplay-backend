@@ -77,6 +77,8 @@ class FeedbackBatchServiceTest {
 
 	private final LlmCallStats llmCallStats = new LlmCallStats();
 
+	private final FeedbackBatchLock feedbackBatchLock = mock(FeedbackBatchLock.class);
+
 	private FeedbackBatchService service;
 
 	private static Instrument stock(Long id, String symbol, String name) {
@@ -95,7 +97,9 @@ class FeedbackBatchServiceTest {
 			priceMoveCardService,
 			marketBriefingService,
 			instrumentNewsSummaryService,
-			llmCallStats));
+			llmCallStats,
+			feedbackBatchLock));
+		when(feedbackBatchLock.tryLock(any(), any())).thenReturn(Optional.of("token"));
 	}
 
 	private void givenReadySessionWithTwoStocks() {
@@ -411,5 +415,34 @@ class FeedbackBatchServiceTest {
 
 		verify(stockReplayService).getFullDayCandles(instrumentA.getId(), ORIGIN_TRADE_DATE);
 		verify(stockReplayService, never()).getFullDayCandles(anyLong(), eq(SERVICE_DATE));
+	}
+
+	@Test
+	@DisplayName("개장 전 배치 락을 얻지 못하면 종목 조회와 하위 작업을 시작하지 않는다")
+	void skipsPreMarketBatchWhenLockIsNotAcquired() {
+		givenReadySessionWithTwoStocks();
+		when(feedbackBatchLock.tryLock(FeedbackBatchLock.Batch.PRE_MARKET, ORIGIN_TRADE_DATE.toString()))
+			.thenReturn(Optional.empty());
+
+		service.runPreMarketBatch();
+
+		verify(instrumentService, never()).getRealInstrumentEntities(Market.STOCK);
+		verifyNoInteractions(priceMoveDetector, priceMoveCardService, marketBriefingService,
+			instrumentNewsSummaryService);
+	}
+
+	@Test
+	@DisplayName("종목 조회에서 예외가 나도 개장 전 배치 락을 해제한다")
+	void unlocksPreMarketBatchWhenInstrumentQueryFails() {
+		when(stockReplayService.getCurrentReplaySession())
+			.thenReturn(new StockReplaySessionDto(true, ORIGIN_TRADE_DATE));
+		when(instrumentService.getRealInstrumentEntities(Market.STOCK))
+			.thenThrow(new IllegalStateException("instrument query failed"));
+
+		assertThatThrownBy(() -> service.runPreMarketBatch())
+			.isInstanceOf(IllegalStateException.class);
+
+		verify(feedbackBatchLock).unlock(
+			FeedbackBatchLock.Batch.PRE_MARKET, ORIGIN_TRADE_DATE.toString(), "token");
 	}
 }

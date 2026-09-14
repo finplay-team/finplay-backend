@@ -138,6 +138,9 @@ class PeerStatsBatchServiceIntegrationTest {
 	@Autowired
 	private TestClock clock;
 
+	@Autowired
+	private FeedbackBatchLock feedbackBatchLock;
+
 	private Instrument instrument;
 
 	private StockReplaySession tradeLinkSession;
@@ -295,7 +298,7 @@ class PeerStatsBatchServiceIntegrationTest {
 			businessDayCalendar);
 		PeerStatsBatchService batchForDate = new PeerStatsBatchService(
 			replayServiceForDate, priceMoveEventRepository, priceMovePeerStatRepository,
-			holderPopulationQueryService, clockForDate);
+			holderPopulationQueryService, clockForDate, feedbackBatchLock);
 		batchForDate.runPeerStatsBatch();
 	}
 
