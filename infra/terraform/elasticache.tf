@@ -8,7 +8,10 @@ resource "aws_elasticache_subnet_group" "main" {
 # 복제본 1 + Multi-AZ 자동 장애 조치로 단일 노드 장애가 곧 서비스 정지가 되는 것을 막는다.
 resource "aws_elasticache_replication_group" "main" {
   replication_group_id = "${var.project_name}-cache"
-  description          = "FinPlay Redis — 시세 스냅샷, 랭킹 ZSET, 조회 캐시, 분산 락"
+  # ElastiCache CreateReplicationGroup은 description에 ASCII 외 문자가 있으면
+  # "non-printable control characters" InvalidParameterValue로 거부한다.
+  # 한글·em dash 없이 ASCII로만 적는다.
+  description = "FinPlay Redis - price snapshots, ranking ZSET, read cache, distributed lock"
 
   engine         = "redis"
   engine_version = "7.1"
