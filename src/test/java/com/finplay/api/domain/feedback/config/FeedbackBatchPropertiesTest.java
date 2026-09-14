@@ -18,6 +18,8 @@ class FeedbackBatchPropertiesTest {
 
 	private static final String SPEC_PEER_STATS_CRON = "0 32 15 * * MON-FRI";
 
+	private static final int SPEC_LOCK_TTL_SECONDS = 3600;
+
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
 		.withUserConfiguration(FeedbackBatchConfig.class);
 
@@ -293,6 +295,56 @@ class FeedbackBatchPropertiesTest {
 					.isEqualTo(SPEC_CRYPTO_WATCH_CRON);
 				assertThat(environment.getProperty("feedback.batch.crypto-peer-stats-cron"))
 					.isEqualTo(SPEC_CRYPTO_PEER_STATS_CRON);
+			});
+	}
+
+	@Test
+	@DisplayName("feedback.batch 설정을 주지 않아도 분산 락 TTL 기본값 3600초로 바인딩된다")
+	void bindsDefaultLockTtlSeconds() {
+		contextRunner.run(context -> {
+			assertThat(context).hasNotFailed();
+			assertThat(context.getBean(FeedbackBatchProperties.class).lockTtlSeconds())
+				.isEqualTo(SPEC_LOCK_TTL_SECONDS);
+		});
+	}
+
+	@Test
+	@DisplayName("feedback.batch.lock-ttl-seconds 케밥케이스 키를 주면 TTL을 덮어쓴다")
+	void bindsLockTtlSecondsFromKebabCaseKey() {
+		contextRunner
+			.withPropertyValues("feedback.batch.lock-ttl-seconds=7200")
+			.run(context -> {
+				assertThat(context).hasNotFailed();
+				assertThat(context.getBean(FeedbackBatchProperties.class).lockTtlSeconds())
+					.isEqualTo(7200);
+			});
+	}
+
+	@Test
+	@DisplayName("분산 락 TTL이 1초 미만이면 기동이 실패한다")
+	void failsWhenLockTtlSecondsIsBelowOne() {
+		contextRunner
+			.withPropertyValues("feedback.batch.lock-ttl-seconds=0")
+			.run(context -> assertThat(context)
+				.hasFailed()
+				.getFailure()
+				.rootCause()
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("lock-ttl-seconds"));
+	}
+
+	@Test
+	@DisplayName("application.yml에 feedback.batch.lock-ttl-seconds가 3600초로 실제 존재한다")
+	void applicationYmlDeclaresLockTtlSeconds() {
+		new ApplicationContextRunner()
+			.withInitializer(new ConfigDataApplicationContextInitializer())
+			.withUserConfiguration(FeedbackBatchConfig.class)
+			.run(context -> {
+				Environment environment = context.getEnvironment();
+				assertThat(environment.getProperty("feedback.batch.lock-ttl-seconds"))
+					.isEqualTo(String.valueOf(SPEC_LOCK_TTL_SECONDS));
+				assertThat(context.getBean(FeedbackBatchProperties.class).lockTtlSeconds())
+					.isEqualTo(SPEC_LOCK_TTL_SECONDS);
 			});
 	}
 }

@@ -1,6 +1,7 @@
 package com.finplay.api.domain.feedback.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -28,6 +29,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -48,6 +50,8 @@ class NewsCollectionServiceTest {
 
 	private MarketNewsItemRepository marketNewsItemRepository;
 
+	private FeedbackBatchLock feedbackBatchLock;
+
 	private NewsCollectionService service;
 
 	private Instrument samsung;
@@ -60,9 +64,12 @@ class NewsCollectionServiceTest {
 		disclosureCollector = mock(DisclosureCollector.class);
 		instrumentService = mock(InstrumentService.class);
 		marketNewsItemRepository = mock(MarketNewsItemRepository.class);
+		feedbackBatchLock = mock(FeedbackBatchLock.class);
+		when(feedbackBatchLock.tryLock(any(), any())).thenReturn(Optional.of("token"));
 		Clock clock = Clock.fixed(COLLECTED_AT.atZone(KST).toInstant(), KST);
 		service = new NewsCollectionService(
-			newsCollector, disclosureCollector, instrumentService, marketNewsItemRepository, clock);
+			newsCollector, disclosureCollector, instrumentService, marketNewsItemRepository, clock,
+			feedbackBatchLock);
 
 		samsung = instrument(1L, Market.STOCK, "005930", "삼성전자");
 		bitcoin = instrument(2L, Market.CRYPTO, "BTC", "비트코인");
@@ -304,7 +311,8 @@ class NewsCollectionServiceTest {
 		when(advancing.instant()).thenReturn(
 			firstSave.atZone(KST).toInstant(), laterSave.atZone(KST).toInstant());
 		NewsCollectionService advancingService = new NewsCollectionService(
-			newsCollector, disclosureCollector, instrumentService, marketNewsItemRepository, advancing);
+			newsCollector, disclosureCollector, instrumentService, marketNewsItemRepository, advancing,
+			feedbackBatchLock);
 		when(newsCollector.collect(eq(samsung), any())).thenReturn(
 			List.of(news("주식 기사", "hankyung.com", "https://hankyung.com/a/1", firstSave)));
 		when(newsCollector.collect(eq(bitcoin), any())).thenReturn(
@@ -338,6 +346,58 @@ class NewsCollectionServiceTest {
 
 		verify(instrumentService).getRealInstrumentEntities(Market.CRYPTO);
 		verify(instrumentService, never()).getInstrumentEntities(any());
+	}
+
+	@Test
+	@DisplayName("뉴스 배치 락을 얻지 못하면 종목 조회와 외부 호출을 시작하지 않는다")
+	void skipsNewsCollectionWhenLockIsNotAcquired() {
+		when(feedbackBatchLock.tryLock(
+			FeedbackBatchLock.Batch.NEWS_COLLECTION, FeedbackBatchLock.SCHEDULED_SCOPE))
+			.thenReturn(Optional.empty());
+
+		service.collectNews();
+
+		verify(instrumentService, never()).getRealInstrumentEntities(any());
+		verify(newsCollector, never()).collect(any(), any());
+		verify(marketNewsItemRepository, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("공시 배치 락을 얻지 못하면 종목 조회와 외부 호출을 시작하지 않는다")
+	void skipsDisclosureCollectionWhenLockIsNotAcquired() {
+		when(feedbackBatchLock.tryLock(
+			FeedbackBatchLock.Batch.DISCLOSURE_COLLECTION, FeedbackBatchLock.SCHEDULED_SCOPE))
+			.thenReturn(Optional.empty());
+
+		service.collectDisclosures();
+
+		verify(instrumentService, never()).getRealInstrumentEntities(any());
+		verify(disclosureCollector, never()).collect(any(), any());
+		verify(marketNewsItemRepository, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("뉴스 종목 조회에서 예외가 나도 획득한 락을 해제한다")
+	void unlocksNewsCollectionWhenBatchFailsBeforeItsLoop() {
+		when(instrumentService.getRealInstrumentEntities(any()))
+			.thenThrow(new IllegalStateException("instrument query failed"));
+
+		assertThatCode(() -> service.collectNews()).isInstanceOf(IllegalStateException.class);
+
+		verify(feedbackBatchLock).unlock(
+			FeedbackBatchLock.Batch.NEWS_COLLECTION, FeedbackBatchLock.SCHEDULED_SCOPE, "token");
+	}
+
+	@Test
+	@DisplayName("공시 종목 조회에서 예외가 나도 획득한 락을 해제한다")
+	void unlocksDisclosureCollectionWhenBatchFailsBeforeItsLoop() {
+		when(instrumentService.getRealInstrumentEntities(Market.STOCK))
+			.thenThrow(new IllegalStateException("instrument query failed"));
+
+		assertThatCode(() -> service.collectDisclosures()).isInstanceOf(IllegalStateException.class);
+
+		verify(feedbackBatchLock).unlock(
+			FeedbackBatchLock.Batch.DISCLOSURE_COLLECTION, FeedbackBatchLock.SCHEDULED_SCOPE, "token");
 	}
 
 	private MarketNewsItem captureSaved() {

@@ -14,6 +14,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,24 +37,37 @@ public class NewsCollectionService {
 
 	private final Clock clock;
 
+	private final FeedbackBatchLock feedbackBatchLock;
+
 	@Scheduled(cron = "${feedback.news.collect-cron}", zone = "Asia/Seoul")
 	public void collectNews() {
-		int saved = 0;
-		int failed = 0;
-		for (Market market : Market.values()) {
-			List<Instrument> instruments = instrumentService.getRealInstrumentEntities(market);
-			List<String> sameMarketNames = instruments.stream().map(Instrument::getName).toList();
-			for (Instrument instrument : instruments) {
-				try {
-					List<CollectedNewsDto> collected = newsCollector.collect(instrument, sameMarketNames);
-					saved += save(instrument, MarketNewsItemType.NEWS, collected);
-				} catch (RuntimeException ex) {
-					failed++;
-					log.warn("뉴스 수집 중 종목 하나가 실패해 건너뛴다. 종목={}", instrument.getId(), ex);
+		String scope = FeedbackBatchLock.SCHEDULED_SCOPE;
+		Optional<String> lockToken = feedbackBatchLock.tryLock(
+			FeedbackBatchLock.Batch.NEWS_COLLECTION, scope);
+		if (lockToken.isEmpty()) {
+			log.debug("뉴스 수집 배치 락을 얻지 못해 이번 회차를 건너뛴다. scope={}", scope);
+			return;
+		}
+		try {
+			int saved = 0;
+			int failed = 0;
+			for (Market market : Market.values()) {
+				List<Instrument> instruments = instrumentService.getRealInstrumentEntities(market);
+				List<String> sameMarketNames = instruments.stream().map(Instrument::getName).toList();
+				for (Instrument instrument : instruments) {
+					try {
+						List<CollectedNewsDto> collected = newsCollector.collect(instrument, sameMarketNames);
+						saved += save(instrument, MarketNewsItemType.NEWS, collected);
+					} catch (RuntimeException ex) {
+						failed++;
+						log.warn("뉴스 수집 중 종목 하나가 실패해 건너뛴다. 종목={}", instrument.getId(), ex);
+					}
 				}
 			}
+			log.info("뉴스 수집 완료 (신규 저장 {}건, 실패 종목 {}건)", saved, failed);
+		} finally {
+			feedbackBatchLock.unlock(FeedbackBatchLock.Batch.NEWS_COLLECTION, scope, lockToken.get());
 		}
-		log.info("뉴스 수집 완료 (신규 저장 {}건, 실패 종목 {}건)", saved, failed);
 	}
 
 	public int collectForInstrument(Instrument instrument) {
@@ -65,19 +79,30 @@ public class NewsCollectionService {
 
 	@Scheduled(cron = "${feedback.news.disclosure-cron}", zone = "Asia/Seoul")
 	public void collectDisclosures() {
-		LocalDate collectionDate = LocalDate.now(clock);
-		int saved = 0;
-		int failed = 0;
-		for (Instrument instrument : instrumentService.getRealInstrumentEntities(Market.STOCK)) {
-			try {
-				List<CollectedNewsDto> collected = disclosureCollector.collect(instrument, collectionDate);
-				saved += save(instrument, MarketNewsItemType.DISCLOSURE, collected);
-			} catch (RuntimeException ex) {
-				failed++;
-				log.warn("공시 수집 중 종목 하나가 실패해 건너뛴다. 종목={}", instrument.getId(), ex);
-			}
+		String scope = FeedbackBatchLock.SCHEDULED_SCOPE;
+		Optional<String> lockToken = feedbackBatchLock.tryLock(
+			FeedbackBatchLock.Batch.DISCLOSURE_COLLECTION, scope);
+		if (lockToken.isEmpty()) {
+			log.debug("공시 수집 배치 락을 얻지 못해 이번 회차를 건너뛴다. scope={}", scope);
+			return;
 		}
-		log.info("공시 수집 완료 (신규 저장 {}건, 실패 종목 {}건)", saved, failed);
+		try {
+			LocalDate collectionDate = LocalDate.now(clock);
+			int saved = 0;
+			int failed = 0;
+			for (Instrument instrument : instrumentService.getRealInstrumentEntities(Market.STOCK)) {
+				try {
+					List<CollectedNewsDto> collected = disclosureCollector.collect(instrument, collectionDate);
+					saved += save(instrument, MarketNewsItemType.DISCLOSURE, collected);
+				} catch (RuntimeException ex) {
+					failed++;
+					log.warn("공시 수집 중 종목 하나가 실패해 건너뛴다. 종목={}", instrument.getId(), ex);
+				}
+			}
+			log.info("공시 수집 완료 (신규 저장 {}건, 실패 종목 {}건)", saved, failed);
+		} finally {
+			feedbackBatchLock.unlock(FeedbackBatchLock.Batch.DISCLOSURE_COLLECTION, scope, lockToken.get());
+		}
 	}
 
 	private int save(Instrument instrument, MarketNewsItemType type, List<CollectedNewsDto> collected) {

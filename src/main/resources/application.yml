@@ -263,6 +263,7 @@ feedback:
     # 자정이므로 매일 00:05에 전날 KST 하루치 카드를 집계한다. 00:00 정각이 아닌 것은 자정 경계의 체결·분봉이
     # 반영될 여유를 주기 위해서다(§C-1). 이 선언부에도 zone = "Asia/Seoul"이 붙는다.
     crypto-peer-stats-cron: "0 5 0 * * *" # 매일 00:05, 전날 KST 카드
+    lock-ttl-seconds: 3600 # 피드백 배치 분산 락 TTL. 최장 개장 전 배치의 LLM 누적 타임아웃보다 길게 둔다
   llm:
     model: gpt-5.4-mini
     timeout-seconds: 20

@@ -14,5 +14,13 @@ public record FeedbackBatchProperties(
 	@DefaultValue("30 * * * * *")
 	String cryptoWatchCron,
 	@DefaultValue("0 5 0 * * *")
-	String cryptoPeerStatsCron) {
+	String cryptoPeerStatsCron,
+	@DefaultValue("3600")
+	int lockTtlSeconds) {
+
+	public FeedbackBatchProperties {
+		if (lockTtlSeconds < 1) {
+			throw new IllegalArgumentException("feedback.batch.lock-ttl-seconds는 1 이상이어야 합니다.");
+		}
+	}
 }

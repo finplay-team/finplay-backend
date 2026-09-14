@@ -29,12 +29,14 @@ class CryptoFeedbackBatchServiceTest {
 
 	private final MarketBriefingService marketBriefingService = mock(MarketBriefingService.class);
 
+	private final FeedbackBatchLock feedbackBatchLock = mock(FeedbackBatchLock.class);
+
 	private final Instrument bitcoin = crypto(1L, "BTC", "비트코인");
 
 	private final Instrument ethereum = crypto(2L, "ETH", "이더리움");
 
 	private final CryptoFeedbackBatchService service = new CryptoFeedbackBatchService(
-		instrumentService, instrumentNewsSummaryService, marketBriefingService);
+		instrumentService, instrumentNewsSummaryService, marketBriefingService, feedbackBatchLock);
 
 	private static Instrument crypto(Long id, String symbol, String name) {
 		Instrument instrument = Instrument.create(
@@ -45,6 +47,7 @@ class CryptoFeedbackBatchServiceTest {
 
 	@BeforeEach
 	void setUp() {
+		when(feedbackBatchLock.tryLock(any(), any())).thenReturn(Optional.of("token"));
 		when(instrumentService.getRealInstrumentEntities(Market.CRYPTO))
 			.thenReturn(List.of(bitcoin, ethereum));
 		when(instrumentNewsSummaryService.refreshCryptoSummary(any()))
@@ -79,6 +82,33 @@ class CryptoFeedbackBatchServiceTest {
 
 		verify(instrumentNewsSummaryService, never()).generateStockSummary(any(), any(), any());
 		verify(marketBriefingService, never()).generateStockBriefing(any());
+	}
+
+	@Test
+	@DisplayName("코인 피드백 락을 얻지 못하면 종목 조회와 LLM 호출을 시작하지 않는다")
+	void skipsCryptoFeedbackWhenLockIsNotAcquired() {
+		when(feedbackBatchLock.tryLock(
+			FeedbackBatchLock.Batch.CRYPTO_FEEDBACK, FeedbackBatchLock.SCHEDULED_SCOPE))
+			.thenReturn(Optional.empty());
+
+		service.refreshCryptoFeedback();
+
+		verify(instrumentService, never()).getRealInstrumentEntities(any());
+		verify(instrumentNewsSummaryService, never()).refreshCryptoSummary(any());
+		verify(marketBriefingService, never()).refreshCryptoBriefing();
+	}
+
+	@Test
+	@DisplayName("코인 종목 조회에서 예외가 나도 코인 피드백 락을 해제한다")
+	void unlocksCryptoFeedbackWhenInstrumentQueryFails() {
+		when(instrumentService.getRealInstrumentEntities(Market.CRYPTO))
+			.thenThrow(new IllegalStateException("instrument query failed"));
+
+		assertThatCode(() -> service.refreshCryptoFeedback())
+			.isInstanceOf(IllegalStateException.class);
+
+		verify(feedbackBatchLock).unlock(
+			FeedbackBatchLock.Batch.CRYPTO_FEEDBACK, FeedbackBatchLock.SCHEDULED_SCOPE, "token");
 	}
 
 	@Test

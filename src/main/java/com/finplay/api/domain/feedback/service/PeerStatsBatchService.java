@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -34,6 +35,8 @@ public class PeerStatsBatchService {
 
 	private final Clock clock;
 
+	private final FeedbackBatchLock feedbackBatchLock;
+
 	@Scheduled(cron = "${feedback.batch.peer-stats-cron}", zone = "Asia/Seoul")
 	public void runPeerStatsBatch() {
 		StockReplaySessionDto session = stockReplayService.getCurrentReplaySession();
@@ -44,47 +47,68 @@ public class PeerStatsBatchService {
 
 		LocalDate originTradeDate = session.sourceTradingDate();
 		LocalDate serviceDate = LocalDate.now(clock);
-		List<PriceMoveEvent> cards = priceMoveEventRepository.findByMarketAndOriginTradeDate(Market.STOCK,
-			originTradeDate);
-		log.info("집단 비교 배치를 시작한다. 원본 거래일={} 서비스 날짜={} 카드={}건",
-			originTradeDate, serviceDate, cards.size());
-
-		long batchStartedNanos = System.nanoTime();
-		int created = 0;
-		for (PriceMoveEvent card : cards) {
-			try {
-				if (aggregateCard(card, serviceDate, LocalDateTime.of(serviceDate, card.getWindowEnd()))) {
-					created++;
-				}
-			} catch (RuntimeException ex) {
-				log.warn("집단 비교 집계에 실패해 이 카드를 건너뛴다. 카드={}", card.getId(), ex);
-			}
+		String scope = FeedbackBatchLock.SCHEDULED_SCOPE;
+		Optional<String> lockToken = feedbackBatchLock.tryLock(FeedbackBatchLock.Batch.PEER_STATS, scope);
+		if (lockToken.isEmpty()) {
+			log.debug("주식 집단 비교 배치 락을 얻지 못해 이번 회차를 건너뛴다. scope={}", scope);
+			return;
 		}
-		log.info("집단 비교 배치를 마쳤다. 생성={}건 소요={}ms", created, elapsedMillis(batchStartedNanos));
+		try {
+			List<PriceMoveEvent> cards = priceMoveEventRepository.findByMarketAndOriginTradeDate(Market.STOCK,
+				originTradeDate);
+			log.info("집단 비교 배치를 시작한다. 원본 거래일={} 서비스 날짜={} 카드={}건",
+				originTradeDate, serviceDate, cards.size());
+
+			long batchStartedNanos = System.nanoTime();
+			int created = 0;
+			for (PriceMoveEvent card : cards) {
+				try {
+					if (aggregateCard(card, serviceDate, LocalDateTime.of(serviceDate, card.getWindowEnd()))) {
+						created++;
+					}
+				} catch (RuntimeException ex) {
+					log.warn("집단 비교 집계에 실패해 이 카드를 건너뛴다. 카드={}", card.getId(), ex);
+				}
+			}
+			log.info("집단 비교 배치를 마쳤다. 생성={}건 소요={}ms", created, elapsedMillis(batchStartedNanos));
+		} finally {
+			feedbackBatchLock.unlock(FeedbackBatchLock.Batch.PEER_STATS, scope, lockToken.get());
+		}
 	}
 
 	@Scheduled(cron = "${feedback.batch.crypto-peer-stats-cron}", zone = "Asia/Seoul")
 	public void runCryptoPeerStatsBatch() {
 		LocalDate targetDate = LocalDate.now(clock).minusDays(1);
-		LocalDateTime from = targetDate.atStartOfDay();
-		LocalDateTime to = targetDate.plusDays(1).atStartOfDay().minusNanos(1_000L);
-		List<PriceMoveEvent> cards = priceMoveEventRepository.findByMarketAndOccurredAtBetween(
-			Market.CRYPTO, from, to);
-		log.info("코인 집단 비교 배치를 시작한다. 대상 날짜={} 카드={}건", targetDate, cards.size());
-
-		long batchStartedNanos = System.nanoTime();
-		int created = 0;
-		for (PriceMoveEvent card : cards) {
-			try {
-				LocalDateTime at = card.getOccurredAt();
-				if (aggregateCard(card, at.toLocalDate(), at)) {
-					created++;
-				}
-			} catch (RuntimeException ex) {
-				log.warn("코인 집단 비교 집계에 실패해 이 카드를 건너뛴다. 카드={}", card.getId(), ex);
-			}
+		String scope = FeedbackBatchLock.SCHEDULED_SCOPE;
+		Optional<String> lockToken = feedbackBatchLock.tryLock(
+			FeedbackBatchLock.Batch.CRYPTO_PEER_STATS, scope);
+		if (lockToken.isEmpty()) {
+			log.debug("코인 집단 비교 배치 락을 얻지 못해 이번 회차를 건너뛴다. 대상 날짜={}", targetDate);
+			return;
 		}
-		log.info("코인 집단 비교 배치를 마쳤다. 생성={}건 소요={}ms", created, elapsedMillis(batchStartedNanos));
+		try {
+			LocalDateTime from = targetDate.atStartOfDay();
+			LocalDateTime to = targetDate.plusDays(1).atStartOfDay().minusNanos(1_000L);
+			List<PriceMoveEvent> cards = priceMoveEventRepository.findByMarketAndOccurredAtBetween(
+				Market.CRYPTO, from, to);
+			log.info("코인 집단 비교 배치를 시작한다. 대상 날짜={} 카드={}건", targetDate, cards.size());
+
+			long batchStartedNanos = System.nanoTime();
+			int created = 0;
+			for (PriceMoveEvent card : cards) {
+				try {
+					LocalDateTime at = card.getOccurredAt();
+					if (aggregateCard(card, at.toLocalDate(), at)) {
+						created++;
+					}
+				} catch (RuntimeException ex) {
+					log.warn("코인 집단 비교 집계에 실패해 이 카드를 건너뛴다. 카드={}", card.getId(), ex);
+				}
+			}
+			log.info("코인 집단 비교 배치를 마쳤다. 생성={}건 소요={}ms", created, elapsedMillis(batchStartedNanos));
+		} finally {
+			feedbackBatchLock.unlock(FeedbackBatchLock.Batch.CRYPTO_PEER_STATS, scope, lockToken.get());
+		}
 	}
 
 	private boolean aggregateCard(PriceMoveEvent card, LocalDate serviceDate, LocalDateTime at) {
