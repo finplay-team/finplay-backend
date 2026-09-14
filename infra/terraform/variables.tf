@@ -57,7 +57,13 @@ variable "rds_allocated_storage_gb" {
 }
 
 variable "rds_skip_final_snapshot" {
-  description = "true면 삭제 시 최종 스냅샷을 안 만든다. 지금은 재구축 반복 중이라 true — 운영이 안정되면 false로 바꾸는 것을 권장한다."
+  description = "true면 삭제 시 최종 스냅샷을 안 만든다. 실제 운영 데이터가 쌓이는 인프라라 기본값은 false — 정말 스냅샷 없이 지워야 할 때만 -var로 일부러 true를 넘긴다."
+  type        = bool
+  default     = false
+}
+
+variable "rds_deletion_protection" {
+  description = "true면 콘솔·API·Terraform 어느 경로로도 실수로 삭제할 수 없다. 정말 지워야 하면 -var로 일부러 false를 넘긴 뒤에만 삭제가 통과한다."
   type        = bool
   default     = true
 }

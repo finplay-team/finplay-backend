@@ -36,7 +36,7 @@ resource "aws_db_instance" "main" {
 
   backup_retention_period = 7
   skip_final_snapshot     = var.rds_skip_final_snapshot
-  deletion_protection     = false
+  deletion_protection     = var.rds_deletion_protection
 
   tags = {
     Name = "${var.project_name}-db"
