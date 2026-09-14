@@ -146,14 +146,15 @@ data "aws_iam_policy_document" "cd_deploy_permissions" {
     resources = [aws_ecr_repository.app.arn]
   }
 
+  # ssm:SendCommand는 document·instance 리소스 타입을 지원해 ARN으로 제한할 수 있지만,
+  # ssm:GetCommandInvocation은 리소스 타입을 지원하지 않는 조회 전용 액션이라 반드시
+  # Resource: "*"여야 한다(PR #569 리뷰에서 지적, AWS 서비스 권한 참조로 확인) — 한 statement에
+  # 같이 묶으면 조회 액션 쪽이 ARN 제한을 못 받아 실제 배포 중 AccessDenied로 실패할 수 있다.
+  # ssm:ListCommandInvocations는 deploy.yml이 호출하지 않아 제거했다.
   statement {
-    sid    = "SsmCommand"
-    effect = "Allow"
-    actions = [
-      "ssm:SendCommand",
-      "ssm:GetCommandInvocation",
-      "ssm:ListCommandInvocations",
-    ]
+    sid     = "SsmSendCommand"
+    effect  = "Allow"
+    actions = ["ssm:SendCommand"]
     resources = concat(
       [for instance in aws_instance.web : instance.arn],
       [aws_instance.scheduler.arn],
@@ -162,19 +163,31 @@ data "aws_iam_policy_document" "cd_deploy_permissions" {
   }
 
   statement {
-    sid    = "AlbRollingDeploy"
+    sid       = "SsmGetCommandInvocation"
+    effect    = "Allow"
+    actions   = ["ssm:GetCommandInvocation"]
+    resources = ["*"]
+  }
+
+  # RegisterTargets·DeregisterTargets는 타깃 그룹 ARN으로 제한할 수 있는 변경 액션이다.
+  # DescribeTargetHealth는 조회 전용이라 위와 같은 이유로 별도 "*" statement로 뺀다.
+  # DescribeListeners·DescribeTargetGroups는 deploy.yml이 호출하지 않아 제거했다
+  # (롤링 배포로 바뀌면서 리스너를 더 이상 조작하지 않는다 — 옛 블루-그린 권한 표의 잔재였다).
+  statement {
+    sid    = "AlbTargetRegistration"
     effect = "Allow"
     actions = [
-      "elasticloadbalancing:DescribeListeners",
-      "elasticloadbalancing:DescribeTargetHealth",
-      "elasticloadbalancing:DescribeTargetGroups",
       "elasticloadbalancing:RegisterTargets",
       "elasticloadbalancing:DeregisterTargets",
     ]
-    resources = [
-      aws_lb_listener.https.arn,
-      aws_lb_target_group.web.arn,
-    ]
+    resources = [aws_lb_target_group.web.arn]
+  }
+
+  statement {
+    sid       = "AlbDescribeTargetHealth"
+    effect    = "Allow"
+    actions   = ["elasticloadbalancing:DescribeTargetHealth"]
+    resources = ["*"]
   }
 }
 
