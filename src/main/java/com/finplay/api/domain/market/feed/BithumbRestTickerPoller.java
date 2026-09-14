@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -39,6 +40,7 @@ public class BithumbRestTickerPoller {
 	private final PriceStore priceStore;
 	private final Clock clock;
 	private final String tickerEndpoint;
+	private final ObjectProvider<BithumbFeedLifecycle> bithumbFeedLifecycleProvider;
 
 	@Autowired
 	public BithumbRestTickerPoller(
@@ -50,27 +52,39 @@ public class BithumbRestTickerPoller {
 		@Value("${bithumb.feed.ticker.read-timeout-ms:3000}")
 		long readTimeoutMs,
 		@Value("${bithumb.feed.ticker.endpoint-url:" + DEFAULT_TICKER_ENDPOINT + "}")
-		String tickerEndpoint) {
+		String tickerEndpoint,
+		ObjectProvider<BithumbFeedLifecycle> bithumbFeedLifecycleProvider) {
 		this(applyTimeouts(RestClient.builder(), connectTimeoutMs, readTimeoutMs).build(), instrumentRepository,
-			priceStore, clock, tickerEndpoint);
+			priceStore, clock, tickerEndpoint, bithumbFeedLifecycleProvider);
 	}
 
 	BithumbRestTickerPoller(RestClient restClient, InstrumentRepository instrumentRepository,
 		PriceStore priceStore, Clock clock) {
-		this(restClient, instrumentRepository, priceStore, clock, DEFAULT_TICKER_ENDPOINT);
+		this(restClient, instrumentRepository, priceStore, clock, DEFAULT_TICKER_ENDPOINT, noLifecycle());
 	}
 
 	BithumbRestTickerPoller(RestClient restClient, InstrumentRepository instrumentRepository,
-		PriceStore priceStore, Clock clock, String tickerEndpoint) {
+		PriceStore priceStore, Clock clock, ObjectProvider<BithumbFeedLifecycle> bithumbFeedLifecycleProvider) {
+		this(restClient, instrumentRepository, priceStore, clock, DEFAULT_TICKER_ENDPOINT,
+			bithumbFeedLifecycleProvider);
+	}
+
+	BithumbRestTickerPoller(RestClient restClient, InstrumentRepository instrumentRepository,
+		PriceStore priceStore, Clock clock, String tickerEndpoint,
+		ObjectProvider<BithumbFeedLifecycle> bithumbFeedLifecycleProvider) {
 		this.restClient = restClient;
 		this.instrumentRepository = instrumentRepository;
 		this.priceStore = priceStore;
 		this.clock = clock;
 		this.tickerEndpoint = tickerEndpoint;
+		this.bithumbFeedLifecycleProvider = bithumbFeedLifecycleProvider;
 	}
 
 	@Scheduled(fixedRate = POLL_INTERVAL_MS)
 	public void pollTickers() {
+		if (!isLeader()) {
+			return;
+		}
 		try {
 			List<Instrument> cryptoInstruments = instrumentRepository
 				.findByMarketAndTradableTrueAndTutorialSampleFalseOrderByIdAsc(Market.CRYPTO);
@@ -90,6 +104,20 @@ public class BithumbRestTickerPoller {
 		} catch (RuntimeException ex) {
 			log.warn("빗썸 ticker 조회 실패 — 이번 회차를 건너뛴다: {}", ex.toString());
 		}
+	}
+
+	private boolean isLeader() {
+		BithumbFeedLifecycle lifecycle = bithumbFeedLifecycleProvider.getIfAvailable();
+		return lifecycle == null || lifecycle.isLeader();
+	}
+
+	static ObjectProvider<BithumbFeedLifecycle> noLifecycle() {
+		return new ObjectProvider<>() {
+			@Override
+			public BithumbFeedLifecycle getIfAvailable() {
+				return null;
+			}
+		};
 	}
 
 	private BithumbTickerItem[] fetchTickers(String markets) {

@@ -1,5 +1,6 @@
 package com.finplay.api.domain.market.feed;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.mockito.ArgumentMatchers.any;
@@ -168,6 +169,46 @@ class BithumbFeedLifecycleTest {
 		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 10_000L);
 
 		assertThatIllegalStateException().isThrownBy(lifecycle::validateLeaderScheduleConfiguration);
+	}
+
+	@Test
+	void isLeaderReturnsFalseBeforeAnyElection() {
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 10_000L);
+
+		assertThat(lifecycle.isLeader()).isFalse();
+	}
+
+	@Test
+	void isLeaderReturnsTrueAfterBecomingLeader() {
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 10_000L);
+		when(bithumbFeedLeaderLock.tryLock()).thenReturn(Optional.of("token-1"));
+
+		lifecycle.electLeader();
+
+		assertThat(lifecycle.isLeader()).isTrue();
+	}
+
+	@Test
+	void isLeaderReturnsFalseAfterSteppingDown() {
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 10_000L);
+		when(bithumbFeedLeaderLock.tryLock()).thenReturn(Optional.of("token-1"));
+		when(bithumbFeedLeaderLock.renew("token-1")).thenReturn(false);
+
+		lifecycle.electLeader();
+		lifecycle.electLeader();
+
+		assertThat(lifecycle.isLeader()).isFalse();
+	}
+
+	@Test
+	void isLeaderReturnsFalseAfterStopFeed() {
+		BithumbFeedLifecycle lifecycle = new BithumbFeedLifecycle(bithumbFeedClient, bithumbFeedLeaderLock, 10_000L);
+		when(bithumbFeedLeaderLock.tryLock()).thenReturn(Optional.of("token-1"));
+		lifecycle.electLeader();
+
+		lifecycle.stopFeed();
+
+		assertThat(lifecycle.isLeader()).isFalse();
 	}
 
 	@Test

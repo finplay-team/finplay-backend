@@ -82,7 +82,8 @@ class BithumbRestTickerPollerAutowiredConstructorTest {
 		Clock clock = Clock.fixed(FIXED_NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC);
 
 		BithumbRestTickerPoller poller = new BithumbRestTickerPoller(
-			instrumentRepository, priceStore, clock, 2000L, 3000L, tickerEndpoint);
+			instrumentRepository, priceStore, clock, 2000L, 3000L, tickerEndpoint,
+			BithumbRestTickerPoller.noLifecycle());
 		poller.pollTickers();
 
 		verify(priceStore).recordObservation(eq("BTC"), eq(new BigDecimal("91234000")), eq(FIXED_NOW));
@@ -97,7 +98,8 @@ class BithumbRestTickerPollerAutowiredConstructorTest {
 				List.of(Instrument.create(Market.CRYPTO, "BTC", "비트코인", BigDecimal.ONE, 1000, true, FIXED_NOW)));
 		Clock clock = Clock.fixed(FIXED_NOW.toInstant(ZoneOffset.UTC), ZoneOffset.UTC);
 		BithumbRestTickerPoller poller = new BithumbRestTickerPoller(
-			instrumentRepository, priceStore, clock, 2000L, 3000L, serverBaseUrl + "/no-such-endpoint");
+			instrumentRepository, priceStore, clock, 2000L, 3000L, serverBaseUrl + "/no-such-endpoint",
+			BithumbRestTickerPoller.noLifecycle());
 
 		poller.pollTickers();
 
