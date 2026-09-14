@@ -48,9 +48,10 @@
      `OAuthStateCookieFactory`가 기동 단계에서 예외를 던져 앱이 뜨지 않는다 (2026-07-31 실측).
      아래 "알려진 제약" 참고.
 
-2. **기동한다.**
+2. **기동한다.** `compose.deploy.yaml`은 `build:`가 아니라 `image: ${APP_IMAGE}`를 쓰므로 `--build`
+   플래그는 더 이상 아무 효과가 없다 — `.env`의 `APP_IMAGE`가 가리키는 ECR 이미지를 그대로 받아 온다.
    ```bash
-   docker compose -f compose.deploy.yaml up -d --build
+   docker compose -f compose.deploy.yaml up -d
    ```
    Flyway 마이그레이션이 끝나야 healthcheck가 통과하므로, 이 명령은 앱 기동이 끝날 때까지 돌아오지 않는다 — 로컬 실측 40초 안팎이다.
 
@@ -64,7 +65,7 @@
 
 ## 갱신
 
-- 백엔드가 바뀐 경우: `docker compose -f compose.deploy.yaml up -d --build app`
+- 백엔드가 바뀐 경우: `.env`의 `APP_IMAGE`를 새 ECR 태그로 바꾼 뒤 `docker compose -f compose.deploy.yaml up -d app`
 - 프론트가 바뀐 경우: 이 스택과 무관하다. `finplay-frontend` 레포에서 빌드해 S3에 `aws s3 sync`로 올린다.
 - `CORS_ALLOWED_ORIGINS` 등 `.env`만 바뀐 경우(이미지는 그대로): `docker compose -f compose.deploy.yaml up -d --force-recreate app` — 재빌드 불필요.
 
@@ -82,7 +83,7 @@ Caused by: io.lettuce.core.RedisCommandTimeoutException: Connection initializati
 컨테이너 안에서 이렇게 확인할 수 있다.
 
 ```bash
-docker exec finplay-deploy-app-1 bash -c 'timeout 5 cat < /dev/null > /dev/tcp/<엔드포인트>/6379 && echo TCP_OK'
+docker exec finplay-app bash -c 'timeout 5 cat < /dev/null > /dev/tcp/<엔드포인트>/6379 && echo TCP_OK'
 ```
 
 `TCP_OK`가 나오는데 앱이 위 예외로 죽는다면 네트워크가 아니라 `.env`의 `SPRING_DATA_REDIS_SSL_ENABLED=true`가 빠진 것이다. 전송 중 암호화는 클러스터 생성 후 끌 수 없으므로 클라이언트를 맞추는 것 외의 방법이 없다.
