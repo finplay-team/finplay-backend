@@ -37,6 +37,10 @@ resource "aws_db_instance" "main" {
   backup_retention_period = 7
   skip_final_snapshot     = var.rds_skip_final_snapshot
   deletion_protection     = var.rds_deletion_protection
+  # skip_final_snapshot=false면 AWS가 이 값을 요구한다. 이름이 고정이라 삭제를 두 번
+  # 반복하면 두 번째는 동일 이름의 스냅샷이 이미 있어 실패한다 — 재삭제 전에 콘솔에서
+  # 이전 최종 스냅샷을 지우거나 이름을 바꿔야 한다.
+  final_snapshot_identifier = "${var.project_name}-db-final-snapshot"
 
   tags = {
     Name = "${var.project_name}-db"
