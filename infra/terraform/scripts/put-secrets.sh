@@ -6,6 +6,7 @@
 # 사용법: ./put-secrets.sh /path/to/실제값이-채워진.env
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${1:-../../.env}"
 SSM_PREFIX="/finplay/prod"
 
@@ -14,29 +15,11 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
-# ssm_parameters.tf의 local.external_secret_names와 반드시 동기화한다 — 여기서 이름을
-# 바꾸면 그쪽 목록도 같이 바꾼다.
-SECRET_KEYS=(
-  JWT_SECRET
-  KAKAO_CLIENT_ID
-  KAKAO_CLIENT_SECRET
-  KAKAO_REDIRECT_URI
-  NAVER_CLIENT_ID
-  NAVER_CLIENT_SECRET
-  NAVER_REDIRECT_URI
-  OAUTH_STATE_SECRET
-  OAUTH_LOGIN_REDIRECT_URI
-  OAUTH_REAUTH_REDIRECT_URI
-  EMAIL_VERIFICATION_SECRET
-  PASSWORD_RESET_SECRET
-  RESEND_API_KEY
-  EMAIL_FROM
-  KIS_APP_KEY
-  KIS_APP_SECRET
-  NAVER_SEARCH_CLIENT_ID
-  NAVER_SEARCH_CLIENT_SECRET
-  DART_API_KEY
-  OPENAI_API_KEY
+# 이름 목록을 여기 다시 하드코딩하지 않는다 — 정본은 ssm_parameters.tf의
+# local.external_secret_names이고, 이 스크립트는 terraform output으로 그 값을 그대로 읽는다.
+mapfile -t SECRET_KEYS < <(
+  terraform -chdir="${SCRIPT_DIR}/.." output -json external_secret_names |
+    python3 -c 'import json, sys; print("\n".join(json.load(sys.stdin)))'
 )
 
 for key in "${SECRET_KEYS[@]}"; do

@@ -49,3 +49,9 @@ output "db_password" {
   sensitive = true
   value     = random_password.db.result
 }
+
+# scripts/put-secrets.sh가 이 값을 읽어 자기 안에 이름 목록을 따로 하드코딩하지 않는다 —
+# 정본은 ssm_parameters.tf의 local.external_secret_names 하나뿐이다.
+output "external_secret_names" {
+  value = local.external_secret_names
+}
