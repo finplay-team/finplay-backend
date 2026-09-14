@@ -21,11 +21,6 @@ resource "aws_iam_role_policy_attachment" "ec2_ssm" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-resource "aws_iam_role_policy_attachment" "ec2_cloudwatch_agent" {
-  role       = aws_iam_role.ec2.name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
-}
-
 data "aws_iam_policy_document" "ec2_custom" {
   statement {
     sid    = "EcrPullOnly"
@@ -67,6 +62,25 @@ data "aws_iam_policy_document" "ec2_custom" {
     resources = ["arn:aws:ssm:ap-northeast-2:${data.aws_caller_identity.current.account_id}:parameter${local.ssm_prefix}/*"]
     # kms:Decrypt는 별도 정책이 필요 없다 — SecureString 기본 키가 관리형 aws/ssm 키라
     # 이 역할이 그 키에 대한 기본 사용 권한을 이미 갖고 있다.
+  }
+
+  statement {
+    sid       = "CloudWatchLogStreamDescribe"
+    effect    = "Allow"
+    actions   = ["logs:DescribeLogStreams"]
+    resources = [for name in local.all_instance_names : aws_cloudwatch_log_group.instance[name].arn]
+  }
+
+  statement {
+    sid    = "CloudWatchLogStreamWrite"
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+    ]
+    resources = [
+      for name in local.all_instance_names : "${aws_cloudwatch_log_group.instance[name].arn}:*"
+    ]
   }
 }
 

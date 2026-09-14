@@ -40,8 +40,8 @@ services:
     stop_grace_period: 30s
     # 컨테이너 stdout/stderr을 CloudWatch Logs로 직접 보낸다 — 로그 그룹은 인스턴스마다 다르므로
     # (web-1/web-2/scheduler) .env의 AWSLOGS_GROUP으로 주입한다(refresh-env.sh가 매번 다시 써 넣음).
-    # EC2 인스턴스 역할(CloudWatchAgentServerPolicy)이 이미 logs:CreateLogStream·PutLogEvents 권한을 갖고
-    # 있어 별도 IAM 정책이 필요 없다.
+    # EC2 인스턴스 역할의 커스텀 정책이 인스턴스별 로그 그룹에 로그 스트림을 생성·전송할 권한을 갖고
+    # 있어 Docker awslogs가 해당 권한으로 로그를 보낸다.
     logging:
       driver: awslogs
       options:
