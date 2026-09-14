@@ -67,9 +67,25 @@ IaC를 쓰지 않으므로 **이 절이 사실상 유일한 정본이다** (ADR-
   | ALB 전환 | `elasticloadbalancing:DescribeListeners`·`DescribeTargetHealth`·`ModifyListener` | 해당 리스너·타깃 그룹 |
 - [x] 역할 ARN(`arn:aws:iam::951532862726:role/finplay-cd-deploy-role`)을 GitHub 리포지터리 **Variable**(시크릿 아님)로 등록 완료.
 
-`deploy.yml`이 실제로 참조하는 GitHub 리포지터리 Variable 이름은 다음 7개다 — 워크플로우 파일을 거꾸로 뒤져 이름을 맞출 필요 없이 여기서 확인한다.
+> **2026-09-14 정정 — 아래 표는 EC2 1대 블루-그린 시절의 변수 목록이라 지금은 안 맞는다.**
+> 롤링 배포 전환(ADR-0030) 이후 `deploy.yml`이 실제로 참조하는 GitHub 리포지터리 Variable
+> 6개는 다음과 같다. 값은 `terraform output`으로 확인한다(`infra/terraform/outputs.tf`가 정본).
+>
+> | Variable | 값의 출처 |
+> |---|---|
+> | `AWS_REGION` | `terraform output aws_region` (고정값 `ap-northeast-2`) |
+> | `AWS_ROLE_ARN` | `terraform output cd_role_arn` |
+> | `ECR_REPOSITORY` | `terraform output ecr_repository` |
+> | `WEB_TARGET_GROUP_ARN` | `terraform output web_target_group_arn` |
+> | `WEB_INSTANCE_IDS` | `terraform output -json web_instance_ids` (배열, 예: `["i-...","i-..."]`) |
+> | `SCHEDULER_INSTANCE_ID` | `terraform output scheduler_instance_id` |
+>
+> `ALB_LISTENER_ARN`·`TG_BLUE_ARN`·`TG_GREEN_ARN`은 더 이상 쓰지 않는다 — 타깃 그룹이
+> 하나뿐이라 리스너 가중치를 전환하는 로직 자체가 없어졌다.
 
-| Variable | 값의 출처 |
+아래는 블루-그린 시절 참고용으로 남겨 둔 옛 표다.
+
+| Variable (폐기됨) | 값의 출처 |
 |---|---|
 | `AWS_REGION` | EC2·ALB·ECR이 있는 리전 |
 | `AWS_ROLE_ARN` | 위 §2에서 만든 배포용 역할 ARN |
