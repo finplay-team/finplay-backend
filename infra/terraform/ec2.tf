@@ -31,6 +31,13 @@ resource "aws_instance" "web" {
   vpc_security_group_ids = [aws_security_group.ec2.id]
   iam_instance_profile   = aws_iam_instance_profile.ec2.name
 
+  depends_on = [
+    aws_iam_role_policy_attachment.ec2_ssm,
+    aws_iam_role_policy.ec2_custom,
+    aws_ssm_parameter.generated,
+    aws_ssm_parameter.external_secret,
+  ]
+
   user_data = templatefile("${path.module}/files/user_data.sh.tftpl", {
     role                 = each.value
     compose_file_content = local.compose_file_content
@@ -63,6 +70,13 @@ resource "aws_instance" "scheduler" {
   subnet_id              = aws_subnet.public[0].id
   vpc_security_group_ids = [aws_security_group.ec2.id]
   iam_instance_profile   = aws_iam_instance_profile.ec2.name
+
+  depends_on = [
+    aws_iam_role_policy_attachment.ec2_ssm,
+    aws_iam_role_policy.ec2_custom,
+    aws_ssm_parameter.generated,
+    aws_ssm_parameter.external_secret,
+  ]
 
   user_data = templatefile("${path.module}/files/user_data.sh.tftpl", {
     role                 = "${var.project_name}-scheduler"
