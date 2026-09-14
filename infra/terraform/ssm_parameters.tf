@@ -20,6 +20,10 @@ locals {
     "CORS_ALLOWED_ORIGINS"          = "https://www.${var.domain_name}"
     "OAUTH_STATE_COOKIE_SECURE"     = "true"
     "ECR_REGISTRY"                  = "${data.aws_caller_identity.current.account_id}.dkr.ecr.ap-northeast-2.amazonaws.com"
+    # application-prod.yml의 finplay.community.image-storage.s3.bucket이 기본값 없이 이 값을
+    # 요구한다 — 없으면 CommunityS3StorageProperties가 기동 시점에 즉시 예외를 던진다
+    # (PR #569 리뷰에서 지적, 실측 확인 — 최초 배포가 healthcheck 단계에서 실패했을 것이다).
+    "COMMUNITY_S3_BUCKET" = aws_s3_bucket.community_images.bucket
   }
 
   # .env.example에서 뽑은 서드파티 시크릿 목록 — 사용자가 scripts/put-secrets.sh로 채운다.
