@@ -12,41 +12,7 @@ locals {
   )
 }
 
-# ── EC2 (CloudWatch Agent 커스텀 메트릭 + 기본 메트릭) ────────────────
-# 디스크 사용률 알람은 cd-runbook.md에 기록된 2026-08-24 디스크 100% 사고(이미지 태그가
-# 커밋 SHA라 배포마다 쌓이는데 정리 단계가 없었다) 재발 방지가 목적이다.
-
-resource "aws_cloudwatch_metric_alarm" "ec2_disk" {
-  for_each = local.instance_by_name
-
-  alarm_name          = "${each.key}-disk-used-percent-high"
-  namespace           = "Finplay/EC2"
-  metric_name         = "disk_used_percent"
-  dimensions          = { InstanceId = each.value.id }
-  statistic           = "Average"
-  period              = 300
-  evaluation_periods  = 2
-  threshold           = 85
-  comparison_operator = "GreaterThanThreshold"
-  treat_missing_data  = "breaching" # 에이전트가 죽어 메트릭이 안 올라오는 것도 이상 신호로 본다
-  alarm_actions       = var.alarm_actions
-}
-
-resource "aws_cloudwatch_metric_alarm" "ec2_memory" {
-  for_each = local.instance_by_name
-
-  alarm_name          = "${each.key}-mem-used-percent-high"
-  namespace           = "Finplay/EC2"
-  metric_name         = "mem_used_percent"
-  dimensions          = { InstanceId = each.value.id }
-  statistic           = "Average"
-  period              = 300
-  evaluation_periods  = 2
-  threshold           = 85
-  comparison_operator = "GreaterThanThreshold"
-  treat_missing_data  = "breaching"
-  alarm_actions       = var.alarm_actions
-}
+# ── EC2 기본 메트릭 ────────────────────────────────────────────────
 
 resource "aws_cloudwatch_metric_alarm" "ec2_cpu" {
   for_each = local.instance_by_name

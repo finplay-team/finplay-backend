@@ -17,8 +17,7 @@ locals {
   web_instance_names = ["${var.project_name}-web-1", "${var.project_name}-web-2"]
   all_instance_names = concat(local.web_instance_names, ["${var.project_name}-scheduler"])
 
-  cloudwatch_agent_config = file("${path.module}/files/cloudwatch-agent-config.json")
-  compose_file_content    = file("${path.module}/../../compose.deploy.yaml")
+  compose_file_content = file("${path.module}/../../compose.deploy.yaml")
 }
 
 # 웹 2대 — 둘 다 같은 ALB 타깃 그룹에 등록되어 동시에 트래픽을 받는다(alb.tf의
@@ -33,9 +32,8 @@ resource "aws_instance" "web" {
   iam_instance_profile   = aws_iam_instance_profile.ec2.name
 
   user_data = templatefile("${path.module}/files/user_data.sh.tftpl", {
-    role                    = each.value
-    cloudwatch_agent_config = local.cloudwatch_agent_config
-    compose_file_content    = local.compose_file_content
+    role                 = each.value
+    compose_file_content = local.compose_file_content
     refresh_env_script = templatefile("${path.module}/files/refresh-env.sh.tftpl", {
       ssm_prefix    = local.ssm_prefix
       awslogs_group = aws_cloudwatch_log_group.instance[each.value].name
@@ -67,9 +65,8 @@ resource "aws_instance" "scheduler" {
   iam_instance_profile   = aws_iam_instance_profile.ec2.name
 
   user_data = templatefile("${path.module}/files/user_data.sh.tftpl", {
-    role                    = "${var.project_name}-scheduler"
-    cloudwatch_agent_config = local.cloudwatch_agent_config
-    compose_file_content    = local.compose_file_content
+    role                 = "${var.project_name}-scheduler"
+    compose_file_content = local.compose_file_content
     refresh_env_script = templatefile("${path.module}/files/refresh-env.sh.tftpl", {
       ssm_prefix    = local.ssm_prefix
       awslogs_group = aws_cloudwatch_log_group.instance["${var.project_name}-scheduler"].name
