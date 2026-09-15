@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     outputs:
       tag: ${{ steps.image.outputs.tag }}
-      image: ${{ steps.build-push.outputs.image }}
+      image: ${{ steps.image-lookup.outputs.image || steps.build-push.outputs.image }}
     steps:
       # image_tag는 이후 ECR 태그·SSM 원격 명령에 그대로 쓰인다 — checkout보다 먼저, 커밋 SHA
       # 형식인지부터 검증해 특수문자 섞인 입력이 원격 스크립트를 깨뜨리는 것을 막는다.
@@ -112,15 +112,6 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "배포 대상 커밋: $TAG"
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-          cache: gradle
-
-      - name: bootJar 빌드
-        run: ./gradlew bootJar --no-daemon
-
       - name: AWS 자격 증명 (OIDC — 장기 액세스 키 없음)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -129,20 +120,107 @@ jobs:
 
       - name: ECR 로그인
         id: ecr-login
-        uses: aws-actions/amazon-ecr-login@v2
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          set -o pipefail
+          ERROR_FILE=$(mktemp)
+          trap 'rm -f "$ERROR_FILE"' EXIT
+
+          if ! TOKEN_ENDPOINT=$(aws ecr get-authorization-token \
+            --region "$AWS_REGION" \
+            --query 'authorizationData[0].proxyEndpoint' \
+            --output text 2>"$ERROR_FILE"); then
+            echo "::error::ECR 인증 토큰 조회 실패."
+            exit 1
+          fi
+
+          case "$TOKEN_ENDPOINT" in
+            https://*) REGISTRY=${TOKEN_ENDPOINT#https://} ;;
+            *)
+              echo "::error::ECR 인증 토큰 응답에서 레지스트리를 확인할 수 없습니다."
+              exit 1
+              ;;
+          esac
+
+          if [ -z "$REGISTRY" ] || [ "$REGISTRY" = "None" ]; then
+            echo "::error::ECR 인증 토큰 응답에서 레지스트리를 확인할 수 없습니다."
+            exit 1
+          fi
+
+          if ! aws ecr get-login-password --region "$AWS_REGION" 2>"$ERROR_FILE" \
+            | docker login --username AWS --password-stdin "$REGISTRY" >/dev/null 2>&1; then
+            echo "::error::ECR 로그인 실패."
+            exit 1
+          fi
+
+          echo "registry=$REGISTRY" >> "$GITHUB_OUTPUT"
+          echo "ECR 로그인 완료"
+
+      - name: 기존 ECR 커밋 태그 확인
+        id: image-lookup
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          TAG: ${{ steps.image.outputs.tag }}
+        run: |
+          ERROR_FILE=$(mktemp)
+          trap 'rm -f "$ERROR_FILE"' EXIT
+
+          if DIGEST=$(aws ecr describe-images \
+            --repository-name "$REPOSITORY" \
+            --image-ids "imageTag=$TAG" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text 2>"$ERROR_FILE"); then
+            if [ -z "$DIGEST" ] || [ "$DIGEST" = "None" ]; then
+              echo "::error::ECR 태그 조회에 성공했지만 이미지 digest 응답이 비어 있습니다."
+              exit 1
+            fi
+
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "image=$REGISTRY/$REPOSITORY:$TAG" >> "$GITHUB_OUTPUT"
+            echo "기존 ECR 커밋 태그를 재사용합니다."
+          else
+            STATUS=$?
+            if grep -q 'ImageNotFoundException' "$ERROR_FILE"; then
+              echo "found=false" >> "$GITHUB_OUTPUT"
+              echo "커밋 태그가 없어 새 이미지를 빌드합니다."
+            else
+              echo "::error::ECR 태그 조회 실패(이미지 없음 외의 오류). AWS 권한·네트워크·요청 상태를 확인하세요."
+              exit "$STATUS"
+            fi
+          fi
+
+      - uses: actions/setup-java@v4
+        if: steps.image-lookup.outputs.found == 'false'
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: bootJar 빌드
+        if: steps.image-lookup.outputs.found == 'false'
+        run: ./gradlew bootJar --no-daemon
 
       - name: 런타임 이미지 빌드 · ECR push (태그 = 커밋 SHA, latest 미사용)
         id: build-push
+        if: steps.image-lookup.outputs.found == 'false'
         env:
           REGISTRY: ${{ steps.ecr-login.outputs.registry }}
           REPOSITORY: ${{ vars.ECR_REPOSITORY }}
           TAG: ${{ steps.image.outputs.tag }}
         run: |
           IMAGE="$REGISTRY/$REPOSITORY:$TAG"
-          docker build -f Dockerfile.runtime -t "$IMAGE" .
-          docker push "$IMAGE"
+          if ! docker build --quiet -f Dockerfile.runtime -t "$IMAGE" . >/dev/null 2>&1; then
+            echo "::error::런타임 이미지 빌드 실패."
+            exit 1
+          fi
+          if ! docker push --quiet "$IMAGE" >/dev/null 2>&1; then
+            echo "::error::런타임 이미지 ECR push 실패."
+            exit 1
+          fi
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
-          echo "이미지 push 완료: $IMAGE"
+          echo "이미지 push 완료"
 
   # 웹 인스턴스를 한 대씩 순서대로 배포한다. max-parallel: 1이 핵심이다 — 동시에 두 대를 다
   # 내리면 그 순간 서비스가 완전히 죽는다. 한 대씩 처리하면 나머지 한 대가 항상 트래픽을 받는다.
@@ -216,7 +294,7 @@ jobs:
           docker image prune -af || true
 
           PREVIOUS_IMAGE=\$(grep -m1 '^APP_IMAGE=' .env | cut -d= -f2-)
-          if ! docker pull "$IMAGE"; then
+          if ! docker pull "$IMAGE" >/dev/null 2>&1; then
             echo "새 이미지 pull 실패 — 기존 서비스와 APP_IMAGE를 유지한다"
             exit 1
           fi
@@ -227,10 +305,10 @@ jobs:
               return 1
             fi
 
-            echo "이전 이미지로 롤백: \$PREVIOUS_IMAGE"
+            echo "이전 이미지로 롤백한다"
             sed -i "s|^APP_IMAGE=.*|APP_IMAGE=\$PREVIOUS_IMAGE|" .env
             if ! docker image inspect "\$PREVIOUS_IMAGE" >/dev/null 2>&1; then
-              docker pull "\$PREVIOUS_IMAGE" || {
+              docker pull "\$PREVIOUS_IMAGE" >/dev/null 2>&1 || {
                 echo "이전 이미지를 pull하지 못했다"
                 return 1
               }
@@ -388,7 +466,7 @@ jobs:
           docker image prune -af || true
 
           PREVIOUS_IMAGE=\$(grep -m1 '^APP_IMAGE=' .env | cut -d= -f2-)
-          if ! docker pull "$IMAGE"; then
+          if ! docker pull "$IMAGE" >/dev/null 2>&1; then
             echo "새 이미지 pull 실패 — 기존 서비스와 APP_IMAGE를 유지한다"
             exit 1
           fi
@@ -399,10 +477,10 @@ jobs:
               return 1
             fi
 
-            echo "이전 이미지로 롤백: \$PREVIOUS_IMAGE"
+            echo "이전 이미지로 롤백한다"
             sed -i "s|^APP_IMAGE=.*|APP_IMAGE=\$PREVIOUS_IMAGE|" .env
             if ! docker image inspect "\$PREVIOUS_IMAGE" >/dev/null 2>&1; then
-              docker pull "\$PREVIOUS_IMAGE" || {
+              docker pull "\$PREVIOUS_IMAGE" >/dev/null 2>&1 || {
                 echo "이전 이미지를 pull하지 못했다"
                 return 1
               }

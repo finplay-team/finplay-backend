@@ -63,7 +63,7 @@
 - [x] 권한을 다음 네 가지로 한정했다. `*` 리소스를 쓰지 않는다.
   | 용도 | 필요한 동작 | 리소스 |
   |---|---|---|
-  | ECR push | `ecr:GetAuthorizationToken`(리소스 지정 불가) + `ecr:BatchCheckLayerAvailability`·`InitiateLayerUpload`·`UploadLayerPart`·`CompleteLayerUpload`·`PutImage` | 해당 ECR 리포지터리 |
+  | ECR 태그 조회·push | `ecr:GetAuthorizationToken`(리소스 지정 불가) + `ecr:DescribeImages`·`ecr:BatchCheckLayerAvailability`·`InitiateLayerUpload`·`UploadLayerPart`·`CompleteLayerUpload`·`PutImage` | 해당 ECR 리포지터리 |
   | EC2 명령 실행 | `ssm:SendCommand`·`GetCommandInvocation`·`ListCommandInvocations` | 배포 대상 인스턴스 + `AWS-RunShellScript` 문서 |
   | ALB 전환 | `elasticloadbalancing:DescribeListeners`·`DescribeTargetHealth`·`ModifyListener` | 해당 리스너·타깃 그룹 |
 - [x] 역할 ARN(`arn:aws:iam::951532862726:role/finplay-cd-deploy-role`)을 GitHub 리포지터리 **Variable**(시크릿 아님)로 등록 완료.
@@ -120,6 +120,7 @@
 - **사용자 영향 없음.** 라이브 색을 건드린 적이 없다.
 - 워크플로우 로그에서 SSM 명령 출력을 본다 → 대개 앱 기동 실패다. `.env` 값(특히 `SPRING_DATA_REDIS_SSL_ENABLED`)·마이그레이션·이미지 아키텍처 순으로 확인한다 (아래 "오진하기 쉬운 실패" 참고).
 - 고친 뒤 **워크플로우를 재실행**한다. EC2에 직접 들어가 고치면 그 수정이 다음 배포에서 사라진다.
+- 같은 커밋 SHA로 재실행하면 ECR의 기존 이미지를 재사용해 `bootJar`·이미지 빌드·push를 건너뛴다. 태그 조회 중 이미지 없음 외의 오류는 배포 실패로 처리한다.
 
 ### 파이프라인이 ⑥(전환) 이후 실패했다
 
