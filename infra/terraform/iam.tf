@@ -125,11 +125,11 @@ data "aws_iam_policy_document" "cd_assume_role" {
     }
 
     # sub를 브랜치까지 못박는다 — 레포까지만 제한하면 어떤 브랜치의 워크플로우든 이 역할을
-    # 가져갈 수 있다 (ADR-0021 §결정 2).
+    # 가져갈 수 있다 (ADR-0021 §결정 2). GitHub 불변 subject의 조직·리포지터리 ID도 포함한다.
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:ref:refs/heads/${var.deploy_branch}"]
+      values   = ["repo:${split("/", var.github_repository)[0]}@${var.github_organization_id}/${split("/", var.github_repository)[1]}@${var.github_repository_id}:ref:refs/heads/${var.deploy_branch}"]
     }
   }
 }

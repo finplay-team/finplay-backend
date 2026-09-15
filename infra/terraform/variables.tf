@@ -16,6 +16,18 @@ variable "github_repository" {
   default     = "finplay-team/finplay-backend"
 }
 
+variable "github_organization_id" {
+  description = "GitHub OIDC 불변 subject에 사용할 조직 ID"
+  type        = string
+  default     = "308370597"
+}
+
+variable "github_repository_id" {
+  description = "GitHub OIDC 불변 subject에 사용할 리포지터리 ID"
+  type        = string
+  default     = "1310072003"
+}
+
 variable "deploy_branch" {
   description = "배포를 트리거하는 브랜치. OIDC 신뢰 정책의 sub 조건에 이 브랜치까지 못박는다(레포까지만 제한하면 다른 브랜치 워크플로우도 역할을 가져갈 수 있다 — ADR-0021 §결정 2)."
   type        = string

@@ -85,8 +85,10 @@ ADR-0020이 상태를 EC2 밖으로 빼고 블루-그린 구조를 결정했다.
 
 ```
 "token.actions.githubusercontent.com:sub":
-  "repo:finplay-team/finplay-backend:ref:refs/heads/dev"
+  "repo:finplay-team@<조직 ID>/finplay-backend@<리포지터리 ID>:ref:refs/heads/dev"
 ```
+
+GitHub의 불변 subject 설정에서는 저장소 소유자와 리포지터리 ID도 포함한다. 실제 ID와 신뢰 정책은 Terraform에서 관리한다.
 
 레포까지만 제한하면 **어떤 브랜치의 워크플로우든** 이 역할을 가져갈 수 있다. 이 레포는 공개(public)이므로 포크 PR에서 워크플로우 파일을 바꾼 코드가 돌 여지를 남기지 않는다 — 배포 워크플로우는 `pull_request` 트리거를 쓰지 않고 `push: dev`만 구독한다.
 

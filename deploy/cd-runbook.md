@@ -44,7 +44,7 @@
 
 ## AWS 콘솔 설정 (사람이 1회 수행)
 
-IaC를 쓰지 않으므로 **이 절이 사실상 유일한 정본이다** (ADR-0020 §결과가 이미 지적한 문제). 값을 바꾸면 여기도 고친다.
+이 절은 초기 콘솔 설정 기록이다. 현재 Terraform이 관리하는 OIDC 신뢰 정책은 AWS 콘솔에서 직접 바꾸지 않으며, 정본은 `infra/terraform/iam.tf`다.
 
 ### 1. GitHub OIDC 자격 증명 공급자
 
@@ -56,9 +56,10 @@ IaC를 쓰지 않으므로 **이 절이 사실상 유일한 정본이다** (ADR-
 
 - [x] `finplay-cd-deploy-role` 생성 완료 (2026-08-13). **신뢰 정책의 `sub` 조건을 브랜치까지 못박았다** — 레포까지만 제한하면 어떤 브랜치의 워크플로우든 이 역할을 가져간다 (ADR-0021 §결정 2).
   ```
-  "token.actions.githubusercontent.com:sub": "repo:finplay-team/finplay-backend:ref:refs/heads/dev"
+  "token.actions.githubusercontent.com:sub": "repo:finplay-team@<조직 ID>/finplay-backend@<리포지터리 ID>:ref:refs/heads/dev"
   "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
   ```
+  > 실제 ID와 신뢰 정책은 `infra/terraform/variables.tf` 및 `iam.tf`에서 관리한다.
 - [x] 권한을 다음 네 가지로 한정했다. `*` 리소스를 쓰지 않는다.
   | 용도 | 필요한 동작 | 리소스 |
   |---|---|---|
