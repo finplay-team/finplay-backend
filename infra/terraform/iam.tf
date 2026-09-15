@@ -152,6 +152,7 @@ data "aws_iam_policy_document" "cd_deploy_permissions" {
     effect = "Allow"
     actions = [
       "ecr:BatchCheckLayerAvailability",
+      "ecr:DescribeImages",
       "ecr:InitiateLayerUpload",
       "ecr:UploadLayerPart",
       "ecr:CompleteLayerUpload",
