@@ -17,7 +17,10 @@ fi
 
 # 이름 목록을 여기 다시 하드코딩하지 않는다 — 정본은 ssm_parameters.tf의
 # local.external_secret_names이고, 이 스크립트는 terraform output으로 그 값을 그대로 읽는다.
-mapfile -t SECRET_KEYS < <(
+SECRET_KEYS=()
+while IFS= read -r key; do
+  SECRET_KEYS+=("$key")
+done < <(
   terraform -chdir="${SCRIPT_DIR}/.." output -json external_secret_names |
     python3 -c 'import json, sys; print("\n".join(json.load(sys.stdin)))'
 )

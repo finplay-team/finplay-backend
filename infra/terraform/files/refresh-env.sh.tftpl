@@ -21,7 +21,7 @@ trap 'rm -f "$TMP_FILE" "$SSM_RESPONSE_FILE"' EXIT
 SSM_QUERY_SUCCEEDED=false
 for attempt in 1 2 3 4 5; do
   if aws ssm get-parameters-by-path \
-    --path "${ssm_prefix}" \
+    --path "${ssm_prefix}/" \
     --with-decryption \
     --recursive \
     --region ap-northeast-2 \
