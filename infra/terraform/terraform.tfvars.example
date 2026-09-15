@@ -6,7 +6,10 @@
 
 # project_name       = "finplay"
 # domain_name        = "finplay.site"
+# GitHub repository identity: when targeting another repository, replace all three values together.
 # github_repository  = "finplay-team/finplay-backend"
+# github_organization_id  = "<조직 ID>"
+# github_repository_id    = "<저장소 ID>"
 # deploy_branch      = "dev"
 # ec2_instance_type  = "t4g.small"
 # rds_instance_class = "db.t4g.small"
