@@ -216,8 +216,48 @@ jobs:
           docker image prune -af || true
 
           PREVIOUS_IMAGE=\$(grep -m1 '^APP_IMAGE=' .env | cut -d= -f2-)
+          if ! docker pull "$IMAGE"; then
+            echo "새 이미지 pull 실패 — 기존 서비스와 APP_IMAGE를 유지한다"
+            exit 1
+          fi
+
+          rollback() {
+            if [ -z "\$PREVIOUS_IMAGE" ]; then
+              echo "이전 APP_IMAGE가 없어 자동 롤백할 수 없다"
+              return 1
+            fi
+
+            echo "이전 이미지로 롤백: \$PREVIOUS_IMAGE"
+            sed -i "s|^APP_IMAGE=.*|APP_IMAGE=\$PREVIOUS_IMAGE|" .env
+            if ! docker image inspect "\$PREVIOUS_IMAGE" >/dev/null 2>&1; then
+              docker pull "\$PREVIOUS_IMAGE" || {
+                echo "이전 이미지를 pull하지 못했다"
+                return 1
+              }
+            fi
+            if ! docker compose -f compose.deploy.yaml up -d; then
+              echo "이전 이미지 컨테이너 시작에 실패했다"
+              return 1
+            fi
+            for i in \$(seq 1 24); do
+              STATUS=\$(docker inspect --format '{{.State.Health.Status}}' finplay-app 2>/dev/null || echo starting)
+              echo "롤백 컨테이너 헬스체크: \$STATUS (\$i/24)"
+              if [ "\$STATUS" = "healthy" ]; then
+                echo "롤백한 이전 이미지가 healthy"
+                return 0
+              fi
+              sleep 5
+            done
+            echo "이전 이미지가 healthy 상태가 되지 않았다"
+            return 1
+          }
+
           sed -i "s|^APP_IMAGE=.*|APP_IMAGE=$IMAGE|" .env
-          docker compose -f compose.deploy.yaml up -d
+          if ! docker compose -f compose.deploy.yaml up -d; then
+            echo "새 컨테이너 시작 실패 — 이전 이미지로 복원한다"
+            rollback || true
+            exit 1
+          fi
 
           for i in \$(seq 1 36); do
             STATUS=\$(docker inspect --format '{{.State.Health.Status}}' finplay-app 2>/dev/null || echo starting)
@@ -239,17 +279,7 @@ jobs:
             docker logs finplay-app 2>&1 | grep -A 40 -E "APPLICATION FAILED TO START|Error creating bean|Caused by:|FlywayValidateException|Detected resolved migration" | tail -c 2000 || true
 
             if [ -n "\$PREVIOUS_IMAGE" ]; then
-              echo "이전 이미지로 롤백: \$PREVIOUS_IMAGE"
-              sed -i "s|^APP_IMAGE=.*|APP_IMAGE=\$PREVIOUS_IMAGE|" .env
-              docker compose -f compose.deploy.yaml up -d
-              for i in \$(seq 1 24); do
-                STATUS=\$(docker inspect --format '{{.State.Health.Status}}' finplay-app 2>/dev/null || echo starting)
-                if [ "\$STATUS" = "healthy" ]; then
-                  echo "롤백한 이전 이미지가 healthy — 이 인스턴스는 이전 버전으로 계속 트래픽을 받을 수 있다"
-                  break
-                fi
-                sleep 5
-              done
+              rollback || true
             else
               echo "롤백할 이전 이미지가 없다(최초 배포로 추정) — 이 인스턴스는 컨테이너가 없는 상태로 남는다"
             fi
@@ -358,8 +388,48 @@ jobs:
           docker image prune -af || true
 
           PREVIOUS_IMAGE=\$(grep -m1 '^APP_IMAGE=' .env | cut -d= -f2-)
+          if ! docker pull "$IMAGE"; then
+            echo "새 이미지 pull 실패 — 기존 서비스와 APP_IMAGE를 유지한다"
+            exit 1
+          fi
+
+          rollback() {
+            if [ -z "\$PREVIOUS_IMAGE" ]; then
+              echo "이전 APP_IMAGE가 없어 자동 롤백할 수 없다"
+              return 1
+            fi
+
+            echo "이전 이미지로 롤백: \$PREVIOUS_IMAGE"
+            sed -i "s|^APP_IMAGE=.*|APP_IMAGE=\$PREVIOUS_IMAGE|" .env
+            if ! docker image inspect "\$PREVIOUS_IMAGE" >/dev/null 2>&1; then
+              docker pull "\$PREVIOUS_IMAGE" || {
+                echo "이전 이미지를 pull하지 못했다"
+                return 1
+              }
+            fi
+            if ! docker compose -f compose.deploy.yaml up -d; then
+              echo "이전 이미지 컨테이너 시작에 실패했다"
+              return 1
+            fi
+            for i in \$(seq 1 24); do
+              STATUS=\$(docker inspect --format '{{.State.Health.Status}}' finplay-app 2>/dev/null || echo starting)
+              echo "롤백 컨테이너 헬스체크: \$STATUS (\$i/24)"
+              if [ "\$STATUS" = "healthy" ]; then
+                echo "롤백한 이전 이미지가 healthy"
+                return 0
+              fi
+              sleep 5
+            done
+            echo "이전 이미지가 healthy 상태가 되지 않았다"
+            return 1
+          }
+
           sed -i "s|^APP_IMAGE=.*|APP_IMAGE=$IMAGE|" .env
-          docker compose -f compose.deploy.yaml up -d
+          if ! docker compose -f compose.deploy.yaml up -d; then
+            echo "새 컨테이너 시작 실패 — 이전 이미지로 복원한다"
+            rollback || true
+            exit 1
+          fi
 
           for i in \$(seq 1 36); do
             STATUS=\$(docker inspect --format '{{.State.Health.Status}}' finplay-app 2>/dev/null || echo starting)
@@ -379,17 +449,7 @@ jobs:
             docker logs finplay-app 2>&1 | grep -A 40 -E "APPLICATION FAILED TO START|Error creating bean|Caused by:|FlywayValidateException|Detected resolved migration" | tail -c 2000 || true
 
             if [ -n "\$PREVIOUS_IMAGE" ]; then
-              echo "이전 이미지로 롤백: \$PREVIOUS_IMAGE"
-              sed -i "s|^APP_IMAGE=.*|APP_IMAGE=\$PREVIOUS_IMAGE|" .env
-              docker compose -f compose.deploy.yaml up -d
-              for i in \$(seq 1 24); do
-                STATUS=\$(docker inspect --format '{{.State.Health.Status}}' finplay-app 2>/dev/null || echo starting)
-                if [ "\$STATUS" = "healthy" ]; then
-                  echo "롤백한 이전 이미지가 healthy"
-                  break
-                fi
-                sleep 5
-              done
+              rollback || true
             else
               echo "롤백할 이전 이미지가 없다(최초 배포로 추정)"
             fi
