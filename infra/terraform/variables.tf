@@ -28,6 +28,11 @@ variable "github_repository_id" {
   default     = "1310072003"
 }
 
+variable "github_static_deploy_repository" {
+  description = "프론트 정적 파일 배포 OIDC 신뢰 정책에 사용할 GitHub 소유자/저장소 이름입니다. 기본값은 두지 않으며 입력 형식은 소유자/저장소입니다. Terraform 실행 시 -var 또는 TF_VAR_github_static_deploy_repository로 주입합니다."
+  type        = string
+}
+
 variable "deploy_branch" {
   description = "배포를 트리거하는 브랜치. OIDC 신뢰 정책의 sub 조건에 이 브랜치까지 못박는다(레포까지만 제한하면 다른 브랜치 워크플로우도 역할을 가져갈 수 있다 — ADR-0021 §결정 2)."
   type        = string

@@ -17,7 +17,7 @@ data "aws_iam_policy_document" "frontend_static_deploy_assume_role" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:finplay-team/finplay-frontend:ref:refs/heads/main"]
+      values   = ["repo:${var.github_static_deploy_repository}:ref:refs/heads/main"]
     }
   }
 }
