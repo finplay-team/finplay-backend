@@ -15,4 +15,5 @@
 # rds_instance_class = "db.t4g.small"
 
 # 프론트 정적 파일 배포 OIDC 신뢰 정책에 사용할 저장소 입력 예시입니다.
+github_static_deploy_repository = "OWNER/REPOSITORY"
 github_static_deploy_repository_id = "REPLACE_WITH_FRONTEND_REPOSITORY_ID"

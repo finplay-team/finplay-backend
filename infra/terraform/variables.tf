@@ -28,6 +28,11 @@ variable "github_repository_id" {
   default     = "1310072003"
 }
 
+variable "github_static_deploy_repository" {
+  description = "프론트 정적 파일 배포 OIDC 신뢰 정책에 사용할 GitHub 저장소입니다."
+  type        = string
+}
+
 variable "github_static_deploy_repository_id" {
   description = "프론트 정적 파일 배포 OIDC 신뢰 정책에 사용할 GitHub 저장소 ID입니다."
   type        = string
