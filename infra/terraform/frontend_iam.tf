@@ -17,7 +17,7 @@ data "aws_iam_policy_document" "frontend_static_deploy_assume_role" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_static_deploy_repository}:ref:refs/heads/${var.github_static_deploy_branch}"]
+      values   = ["repo:${split("/", var.github_repository)[0]}@${var.github_organization_id}/${split("/", var.github_repository)[1]}@${var.github_static_deploy_repository_id}:ref:refs/heads/${var.github_static_deploy_branch}"]
     }
   }
 }
