@@ -6,7 +6,7 @@
 | 2026-09-16 |  Codex  |  `git status --short --branch` 및 필수 문서 확인  |  작업 트리, 적용 범위와 저장소 규칙 확인  |
 | 2026-09-16 |  Codex  |  배포 스펙·ADR 및 구현 전 문서 검토  |  구현 조건과 검증 지침 확인  |
 | 2026-09-16 |  Codex  |  프론트 배포 workflow 읽기 전용 확인  |  OIDC 신뢰 범위와 필요한 배포 동작 확인; GitHub 설정값 미열람  |
-| 2026-09-16 |  Codex  |  Terraform state 자원 소유 관계 확인  |  state 값 미출력; 기존 자원 소유 관계만 확인  |
+| 2026-09-16 | Codex | Terraform state 접근 제한 확인 | state 값과 소유 관계는 확인하지 않음; state 변경·plan·apply 미실행 |
 | 2026-09-16 |  planner  |  spec·plan·tasks 정리  |  작업 항목 및 범위 문서화  |
 | 2026-09-16 |  implementer  |  Terraform IAM 변경 구현  |  전용 배포 권한을 요청 범위에 맞춰 구성  |
 | 2026-09-16 |  Codex  |  `terraform fmt -check -recursive`  |  통과  |
@@ -24,4 +24,4 @@
 - 검증 통과: `terraform fmt -check -recursive`, `git diff --check`.
 - 검증 통과: `terraform fmt -check -recursive`, `git diff --check`, `./gradlew build`.
 - 검증 미완료: `terraform validate`는 로컬 provider schema를 사용할 수 없어 완료하지 못했다. 초기화나 네트워크 설정은 실행하지 않았다.
-- 미접촉: Terraform state, plan/apply, GitHub 설정, 배포. 커밋은 아직 없다.
+- 로컬 커밋 생성까지 완료했으며 push는 실행하지 않았다.
