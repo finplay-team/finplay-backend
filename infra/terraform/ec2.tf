@@ -98,7 +98,7 @@ resource "aws_instance" "scheduler" {
       ssm_prefix              = local.ssm_prefix
       awslogs_group           = aws_cloudwatch_log_group.instance["${var.project_name}-scheduler"].name
       spring_profiles_active  = "prod,scheduler"
-      app_healthcheck_command = "test -r /proc/1/cmdline && grep -aq 'app.jar' /proc/1/cmdline"
+      app_healthcheck_command = "test -r /proc/1/cmdline && grep -aq 'app.jar' /proc/1/cmdline && test -f /tmp/finplay-scheduler-ready"
     })
   })
 

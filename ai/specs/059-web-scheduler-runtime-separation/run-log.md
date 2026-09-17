@@ -28,6 +28,14 @@
 | 00:20 | main | `apply_patch`로 `docs/issue-589-web-scheduler-runtime-separation-result.md` 작성 | 구현 구조·검증 결과·남은 운영 작업을 민감정보 없이 정리; 결과 문서는 커밋 대상에서 제외 |
 | 00:20 | main | `git diff --check` | 현재 Stage 5 변경의 whitespace 오류 없음 |
 | 00:23 | main | `git add`로 Stage 5 대상 파일만 stage 후 `git diff --cached --check` 및 `git commit -m \"feat: 웹과 스케줄러 배포 런타임 분리\"` | Stage 5 변경 커밋 완료; 결과 문서와 기존 미추적 문서는 커밋에서 제외 |
+| 01:11 | implementer/main | `./gradlew compileJava` | Scheduler readiness marker 컴파일 성공; health check 차단사항 수정 |
+| 01:11 | tester/main | `./gradlew test --tests com.finplay.api.global.config.SchedulerReadinessMarkerTest` | ApplicationReadyEvent marker 생성·stale marker 정리·실패 격리 테스트 3건 통과 |
+| 01:11 | main | `git diff` 및 새 readiness marker 코드 확인 | Scheduler non-web readiness marker와 Scheduler health check만 변경; 결과 문서와 기존 미추적 파일은 커밋에서 제외 |
+| 01:12 | main | `./gradlew spotlessApply compileJava compileTestJava test --tests com.finplay.api.global.config.SchedulerReadinessMarkerTest --no-daemon --max-workers=1` | 포맷·컴파일·readiness marker 대상 테스트 통과 |
+| 01:12 | main | `terraform fmt -check -diff` | Terraform 형식 검증 통과 |
+| 01:12 | main | `terraform validate` | 캐시된 provider 플러그인 실행 환경 오류로 1차 실패 |
+| 01:13 | main | 승인된 환경에서 `terraform validate` 재실행 | Terraform 구성 검증 통과 |
+| 01:14 | main | `git add`로 차단사항 수정 파일만 stage 후 `git diff --cached --check` 및 `git commit -m \"fix: 스케줄러 readiness health check 보강\"` | Scheduler readiness health check 차단사항 수정 커밋 완료; 결과 문서와 기존 미추적 파일은 커밋에서 제외 |
 
 ## 현재 분석 결과
 
@@ -41,6 +49,6 @@
 - Scheduler 작업은 DB/Redis뿐 아니라 KIS·Bithumb·뉴스·LLM 외부 호출을 포함하므로 scheduling thread와 Hikari Connection의 점유 시간을 별도로 검증해야 한다.
 - 자동체결 Executor는 기본 8개 partition이므로 Scheduler Hikari Pool 8은 자동체결만으로 소진될 수 있다.
 
-## 사용자 선택 대기
+## 완료 상태
 
-Connection Pool 선택이 완료됐다. Stage 4 구현 후 검증하고, Stage 5에서 Docker/Terraform/Health Check를 별도로 진행한다.
+Connection Pool 선택, Stage 4·5 구현·검증 및 커밋을 완료했다. 리뷰 차단사항인 Scheduler readiness health check를 추가 구현하고 검증·커밋까지 완료했다.
