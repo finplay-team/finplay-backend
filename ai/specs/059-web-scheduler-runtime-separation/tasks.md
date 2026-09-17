@@ -33,20 +33,20 @@
 
 ## Stage 5 구현
 
-- [ ] Web Runtime에 `prod,web`을 적용한다.
-- [ ] Scheduler Runtime에 `prod,scheduler`를 적용한다.
-- [ ] Web HTTP/ALB health check와 Scheduler non-web health check를 분리한다.
-- [ ] Terraform은 필요한 최소 범위만 수정한다.
-- [ ] Docker/Compose는 필요한 최소 범위만 수정한다.
+- [x] Web Runtime에 `prod,web`을 적용한다.
+- [x] Scheduler Runtime에 `prod,scheduler`를 적용한다.
+- [x] Web HTTP/ALB health check와 Scheduler non-web health check를 분리한다.
+- [x] Terraform은 필요한 최소 범위만 수정한다.
+- [x] Docker/Compose는 필요한 최소 범위만 수정한다.
 
 ## 최종 검증
 
-- [ ] `spotlessApply`
-- [ ] `compileJava`
-- [ ] `compileTestJava`
-- [ ] 영향 범위 테스트
-- [ ] `spotbugsMain`
-- [ ] `./gradlew build --no-daemon --max-workers=1`
-- [ ] `git status`, `git diff --stat`, `git diff`로 범위 확인
-- [ ] 결과 문서 작성
-- [ ] 커밋하지 않고 사용자 최종 검토 대기
+- [x] `spotlessApply`
+- [x] `compileJava`
+- [x] `compileTestJava`
+- [x] 영향 범위 테스트
+- [x] `spotbugsMain`
+- [x] `./gradlew build --no-daemon --max-workers=1`
+- [x] `git status`, `git diff --stat`, `git diff`로 범위 확인
+- [x] 결과 문서 작성
+- [x] 결과 문서를 제외한 Stage 5 변경을 커밋한다.

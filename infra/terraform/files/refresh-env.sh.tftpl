@@ -49,6 +49,8 @@ done < "$SSM_RESPONSE_FILE"
 
 printf 'APP_IMAGE=%s\n' "$PREVIOUS_APP_IMAGE" >> "$TMP_FILE"
 printf 'AWSLOGS_GROUP=%s\n' "${awslogs_group}" >> "$TMP_FILE"
+printf 'SPRING_PROFILES_ACTIVE=%s\n' "${spring_profiles_active}" >> "$TMP_FILE"
+printf 'APP_HEALTHCHECK_COMMAND=%s\n' "${app_healthcheck_command}" >> "$TMP_FILE"
 
 mv "$TMP_FILE" "$ENV_FILE"
 chown ec2-user:ec2-user "$ENV_FILE"

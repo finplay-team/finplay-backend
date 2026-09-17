@@ -18,6 +18,16 @@
 | 00:08 | main | `./gradlew spotlessApply compileJava compileTestJava test --tests 'com.finplay.api.global.config.OperationalProfilePropertiesTest' --tests 'com.finplay.api.global.config.SchedulingConfigProfileTest'` | 포맷·컴파일·Stage 4 대상 테스트 통과 |
 | 00:08 | main | `./gradlew test --tests 'com.finplay.api.ProdWebProfileContextIntegrationTest' --tests 'com.finplay.api.ProdSchedulerProfileContextIntegrationTest'` | Web/Scheduler Context 통합 테스트 통과; Redis shutdown 과정의 기존 비치명적 warning만 확인 |
 | 00:09 | main | `git add ... && git diff --cached --check && git commit -m \"feat: 웹과 스케줄러 실행 리소스 분리\"` | Stage 4 변경만 커밋; 결과 문서와 기존 미추적 파일은 커밋에서 제외 |
+| 00:12 | main | `rg`/`sed`로 `compose.deploy.yaml`, Terraform EC2/user-data/refresh-env, ALB/보안그룹, deploy workflow 확인 | 운영 Compose는 `prod` 고정이고 Scheduler에도 HTTP health check가 적용되는 구조임을 재확인; Web만 ALB target임을 확인 |
+| 00:12 | main | `apply_patch`로 `compose.deploy.yaml`, `infra/terraform/ec2.tf`, `infra/terraform/files/refresh-env.sh.tftpl`, `.env.example` 수정 | Terraform이 인스턴스 역할별 `SPRING_PROFILES_ACTIVE`와 health command를 `.env`에 주입하도록 최소 변경; Web HTTP/Scheduler non-web liveness 분리 |
+| 00:14 | main | `SPRING_PROFILES_ACTIVE=prod,web ... docker compose config --quiet` 및 `SPRING_PROFILES_ACTIVE=prod,scheduler ... docker compose config --quiet` | Web/Scheduler Compose interpolation과 health command 구성이 모두 통과 |
+| 00:14 | main | `terraform fmt -check -diff` | Terraform formatting 통과 |
+| 00:14 | main | `terraform init -backend=false && terraform validate` | provider 초기화 후 Terraform configuration valid 확인; 실제 AWS 접근·plan/apply는 수행하지 않음 |
+| 00:19 | main | `./gradlew spotlessApply compileJava compileTestJava test spotbugsMain build --no-daemon --max-workers=1` | 전체 테스트·컴파일·SpotBugs·build 통과; 테스트 종료 과정의 기존 Redis shutdown warning만 확인 |
+| 00:19 | main | `git status --short`, `git diff --stat`, `git diff --name-only` | Stage 5 변경은 Compose/Terraform/.env.example과 Spec 문서로 제한; Stage 3 Java/Redis/SSE 및 거래 코드 변경 없음 |
+| 00:20 | main | `apply_patch`로 `docs/issue-589-web-scheduler-runtime-separation-result.md` 작성 | 구현 구조·검증 결과·남은 운영 작업을 민감정보 없이 정리; 결과 문서는 커밋 대상에서 제외 |
+| 00:20 | main | `git diff --check` | 현재 Stage 5 변경의 whitespace 오류 없음 |
+| 00:23 | main | `git add`로 Stage 5 대상 파일만 stage 후 `git diff --cached --check` 및 `git commit -m \"feat: 웹과 스케줄러 배포 런타임 분리\"` | Stage 5 변경 커밋 완료; 결과 문서와 기존 미추적 문서는 커밋에서 제외 |
 
 ## 현재 분석 결과
 

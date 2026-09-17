@@ -47,8 +47,10 @@ resource "aws_instance" "web" {
     role                 = each.value
     compose_file_content = local.compose_file_content
     refresh_env_script = templatefile("${path.module}/files/refresh-env.sh.tftpl", {
-      ssm_prefix    = local.ssm_prefix
-      awslogs_group = aws_cloudwatch_log_group.instance[each.value].name
+      ssm_prefix              = local.ssm_prefix
+      awslogs_group           = aws_cloudwatch_log_group.instance[each.value].name
+      spring_profiles_active  = "prod,web"
+      app_healthcheck_command = "curl -fsS http://localhost:8080/actuator/health"
     })
   })
 
@@ -68,7 +70,8 @@ resource "aws_instance" "web" {
 # 스케줄러 1대 — ALB 타깃 그룹에 등록하지 않는다(트래픽을 받지 않음). 웹 인스턴스와 완전히
 # 동일한 이미지·구성으로 뜬다 — 다중 인스턴스에서도 안전하게 동작하도록 이미 손본 배치 작업들
 # (#564 빗썸 피드 리더 락, #565 재생세션 락, 그 외 기존 RedisLock류)이 어느 인스턴스에서
-# 실행되든 정확히 하나만 실제로 일한다는 전제로 별도 프로필 분리 없이 그대로 띄운다.
+# 실행되든 정확히 하나만 실제로 일한다는 전제는 유지하되, Web과 Scheduler는 각자 운영 Profile로
+# 실행한다.
 resource "aws_instance" "scheduler" {
   ami                    = data.aws_ami.al2023_arm64.id
   instance_type          = var.ec2_instance_type
@@ -92,8 +95,10 @@ resource "aws_instance" "scheduler" {
     role                 = "${var.project_name}-scheduler"
     compose_file_content = local.compose_file_content
     refresh_env_script = templatefile("${path.module}/files/refresh-env.sh.tftpl", {
-      ssm_prefix    = local.ssm_prefix
-      awslogs_group = aws_cloudwatch_log_group.instance["${var.project_name}-scheduler"].name
+      ssm_prefix              = local.ssm_prefix
+      awslogs_group           = aws_cloudwatch_log_group.instance["${var.project_name}-scheduler"].name
+      spring_profiles_active  = "prod,scheduler"
+      app_healthcheck_command = "test -r /proc/1/cmdline && grep -aq 'app.jar' /proc/1/cmdline"
     })
   })
 

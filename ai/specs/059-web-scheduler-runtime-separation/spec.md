@@ -2,7 +2,7 @@
 
 ## 상태
 
-현재 구조 분석 및 Connection Pool 선택 완료. Stage 4 구현 진행 중.
+현재 구조 분석, Stage 4·5 구현 및 검증, 커밋까지 완료했다.
 
 사용자가 Pool 설정을 선택하기 전에는 HikariCP, DataSource, Docker, Terraform, Runtime 설정을 변경하지 않는다.
 
@@ -93,12 +93,12 @@ Stage 3의 Redis Pub/Sub → Web SSE 전달 구조와 기존 주문·체결·시
 - [x] 사용자가 Connection Pool 후보를 선택한다.
 - [x] 선택한 Pool 설정을 Web/Scheduler Runtime에 반영한다.
 - [x] Web/Scheduler Scheduling 리소스가 역할에 맞게 분리된다.
-- [ ] Web은 `prod,web`, Scheduler는 `prod,scheduler`로 기동된다.
-- [ ] Web만 ALB HTTP health check 대상이 된다.
-- [ ] Scheduler는 non-web 실행 방식에 맞는 health 확인을 갖는다.
-- [ ] Stage 3 Redis Pub/Sub/SSE 구조가 변경되지 않는다.
-- [ ] 주문·체결·시세 수집·Repository·Entity·Transaction·Lock이 변경되지 않는다.
-- [ ] 관련 테스트, 정적 분석, build가 통과한다.
+- [x] Web은 `prod,web`, Scheduler는 `prod,scheduler`로 기동된다.
+- [x] Web만 ALB HTTP health check 대상이 된다.
+- [x] Scheduler는 non-web 실행 방식에 맞는 health 확인을 갖는다.
+- [x] Stage 3 Redis Pub/Sub/SSE 구조가 변경되지 않는다.
+- [x] 주문·체결·시세 수집·Repository·Entity·Transaction·Lock이 변경되지 않는다.
+- [x] 관련 테스트, 정적 분석, build가 통과한다.
 
 ## 제외 범위
 
@@ -109,6 +109,14 @@ Stage 3의 Redis Pub/Sub → Web SSE 전달 구조와 기존 주문·체결·시
 - Bithumb/KIS 시세 수집 방식 변경
 - Redis Streams, Kafka, RabbitMQ, SQS 도입
 - 비밀값·접속정보의 문서 기록
+
+## Stage 5 구현 메모
+
+- 운영 Compose는 인스턴스별 `.env`의 역할 설정을 사용하도록 변경했다.
+- Terraform은 Web/Scheduler EC2 user-data에서 역할별 Profile과 health command를 생성하도록 최소 변경했다.
+- 기존 ALB target group은 Web EC2만 연결하는 구조를 유지했다.
+- Scheduler는 `web-application-type: none`을 유지하며 HTTP endpoint를 추가하지 않았다.
+- Scheduler health check는 Java 프로세스의 실행 상태를 확인하는 non-web liveness 방식이다. 애플리케이션 수준 readiness 확인은 후속 운영 개선 항목이다.
 
 ## 선택된 Connection Pool 설정
 
