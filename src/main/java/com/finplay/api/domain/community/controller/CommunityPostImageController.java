@@ -5,6 +5,7 @@ import com.finplay.api.domain.community.dto.response.CommunityPostImageFileRespo
 import com.finplay.api.domain.community.dto.response.CommunityPostImageResponse;
 import com.finplay.api.domain.community.service.CommunityPostImageService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 @RestController
+@Profile("!prod | web")
 @RequestMapping("/api/community/posts/images")
 @RequiredArgsConstructor
 public class CommunityPostImageController {

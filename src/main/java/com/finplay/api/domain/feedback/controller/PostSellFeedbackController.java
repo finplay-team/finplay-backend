@@ -4,6 +4,7 @@ import com.finplay.api.domain.auth.token.AuthenticatedUser;
 import com.finplay.api.domain.feedback.dto.response.PostSellFeedbackResponse;
 import com.finplay.api.domain.feedback.service.PostSellFeedbackService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@Profile("!prod | web")
 @RequestMapping("/api/ai")
 @RequiredArgsConstructor
 public class PostSellFeedbackController {

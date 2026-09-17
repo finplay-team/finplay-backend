@@ -22,9 +22,9 @@ class BithumbFeedLifecycleConditionalTest {
 	}
 
 	@Test
-	@DisplayName("prod 프로필이면 리더 선출 클래스만 뜨고 즉시시작 클래스는 뜨지 않는다")
-	void onlyLeaderElectionLifecycleExistsOnProdProfile() {
-		contextRunner.withSystemProperties("spring.profiles.active=prod").run(context -> {
+	@DisplayName("prod,scheduler 프로필이면 리더 선출 클래스만 뜨고 즉시시작 클래스는 뜨지 않는다")
+	void onlyLeaderElectionLifecycleExistsOnProdSchedulerProfile() {
+		contextRunner.withSystemProperties("spring.profiles.active=prod,scheduler").run(context -> {
 			assertThat(context).hasNotFailed();
 			assertThat(context).hasSingleBean(BithumbFeedLifecycle.class);
 			assertThat(context).doesNotHaveBean(BithumbFeedImmediateLifecycle.class);

@@ -2,9 +2,11 @@ package com.finplay.api.domain.auth.oauth.exchange;
 
 import java.security.SecureRandom;
 import java.util.Base64;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Component
+@Profile("!prod | web")
 public class ReauthTokenGenerator {
 
 	private static final int TOKEN_BYTE_LENGTH = 32;

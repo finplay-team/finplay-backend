@@ -1,11 +1,13 @@
 package com.finplay.api.domain.auth.oauth;
 
 import java.time.Duration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 @Component
+@Profile("!prod | web")
 public final class OAuthRestClientFactory {
 
 	private static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(5);

@@ -4,9 +4,5 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties({
-	FeedbackNewsProperties.class,
-	NaverSearchProperties.class,
-	DartProperties.class
-})
+@EnableConfigurationProperties(FeedbackNewsProperties.class)
 public class NewsCollectionPropertiesConfig {}

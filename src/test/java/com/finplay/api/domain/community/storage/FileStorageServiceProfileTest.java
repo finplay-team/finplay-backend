@@ -16,7 +16,7 @@ import software.amazon.awssdk.services.s3.S3Client;
 class FileStorageServiceProfileTest {
 
 	@Configuration
-	@Profile("prod")
+	@Profile("prod & web")
 	@EnableConfigurationProperties(CommunityS3StorageProperties.class)
 	static class TestS3ClientConfig {
 
@@ -43,10 +43,10 @@ class FileStorageServiceProfileTest {
 	}
 
 	@Test
-	@DisplayName("prod 프로필에서는 S3FileStorageService가 실제로 조립되고 CommunityS3StorageProperties가 바인딩된다")
-	void prodProfileAssemblesS3FileStorageServiceWithBoundProperties() {
+	@DisplayName("prod,web 프로필에서는 S3FileStorageService가 실제로 조립되고 CommunityS3StorageProperties가 바인딩된다")
+	void prodWebProfileAssemblesS3FileStorageServiceWithBoundProperties() {
 		contextRunner
-			.withSystemProperties("spring.profiles.active=prod")
+			.withSystemProperties("spring.profiles.active=prod,web")
 			.withPropertyValues("finplay.community.image-storage.s3.bucket=finplay-community-images")
 			.run(context -> {
 				assertThat(context).hasNotFailed();
@@ -59,10 +59,10 @@ class FileStorageServiceProfileTest {
 	}
 
 	@Test
-	@DisplayName("COMMUNITY_S3_BUCKET이 미해결 플레이스홀더로 남아 있으면 prod 컨텍스트 기동이 실패한다")
-	void prodProfileFailsFastWhenBucketPlaceholderUnresolved() {
+	@DisplayName("COMMUNITY_S3_BUCKET이 미해결 플레이스홀더로 남아 있으면 prod,web 컨텍스트 기동이 실패한다")
+	void prodWebProfileFailsFastWhenBucketPlaceholderUnresolved() {
 		contextRunner
-			.withSystemProperties("spring.profiles.active=prod")
+			.withSystemProperties("spring.profiles.active=prod,web")
 			.withPropertyValues("finplay.community.image-storage.s3.bucket=${COMMUNITY_S3_BUCKET}")
 			.run(context -> {
 				assertThat(context).hasFailed();
@@ -71,10 +71,10 @@ class FileStorageServiceProfileTest {
 	}
 
 	@Test
-	@DisplayName("COMMUNITY_S3_BUCKET이 공백이면 prod 컨텍스트 기동이 실패한다")
-	void prodProfileFailsFastWhenBucketBlank() {
+	@DisplayName("COMMUNITY_S3_BUCKET이 공백이면 prod,web 컨텍스트 기동이 실패한다")
+	void prodWebProfileFailsFastWhenBucketBlank() {
 		contextRunner
-			.withSystemProperties("spring.profiles.active=prod")
+			.withSystemProperties("spring.profiles.active=prod,web")
 			.withPropertyValues("finplay.community.image-storage.s3.bucket=   ")
 			.run(context -> {
 				assertThat(context).hasFailed();
@@ -83,10 +83,10 @@ class FileStorageServiceProfileTest {
 	}
 
 	@Test
-	@DisplayName("s3.bucket 프로퍼티 키 자체가 없으면(null 바인딩) prod 컨텍스트 기동이 실패한다")
-	void prodProfileFailsFastWhenBucketPropertyMissing() {
+	@DisplayName("s3.bucket 프로퍼티 키 자체가 없으면(null 바인딩) prod,web 컨텍스트 기동이 실패한다")
+	void prodWebProfileFailsFastWhenBucketPropertyMissing() {
 		contextRunner
-			.withSystemProperties("spring.profiles.active=prod")
+			.withSystemProperties("spring.profiles.active=prod,web")
 			.run(context -> {
 				assertThat(context).hasFailed();
 				assertThat(context.getStartupFailure()).hasRootCauseInstanceOf(IllegalStateException.class);

@@ -2,6 +2,7 @@ package com.finplay.api.domain.market.controller;
 
 import com.finplay.api.domain.market.service.StockPriceStreamService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
+@Profile("!prod | web")
 @RequestMapping("/api/stocks")
 @RequiredArgsConstructor
 public class StockPriceSseController {

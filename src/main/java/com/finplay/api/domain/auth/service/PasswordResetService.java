@@ -13,10 +13,12 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Profile("!prod | web")
 public class PasswordResetService {
 
 	private static final String NOT_FOUND_MESSAGE = "가입되지 않은 이메일입니다.";

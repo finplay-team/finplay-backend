@@ -21,7 +21,7 @@ class NewsCollectionPropertiesTest {
 	private static final int SPEC_MAX_ITEMS_PER_SUMMARY = 30;
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-		.withUserConfiguration(NewsCollectionPropertiesConfig.class);
+		.withUserConfiguration(NewsCollectionPropertiesConfig.class, NewsApiPropertiesConfig.class);
 
 	@Test
 	@DisplayName("feedback.news 설정을 하나도 주지 않아도 §C-1 크론 2종으로 바인딩된다")

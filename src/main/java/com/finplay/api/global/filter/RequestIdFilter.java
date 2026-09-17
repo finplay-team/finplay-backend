@@ -8,11 +8,13 @@ import java.io.IOException;
 import java.util.UUID;
 import org.slf4j.MDC;
 import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterProperties;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 @Component
+@Profile("!prod | web")
 @Order(SecurityFilterProperties.DEFAULT_FILTER_ORDER - 1)
 public class RequestIdFilter extends OncePerRequestFilter {
 

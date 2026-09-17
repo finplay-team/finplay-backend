@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import software.amazon.awssdk.services.s3.S3Client;
 
-@Profile("prod")
+@Profile("prod & web")
 @Configuration
 @EnableConfigurationProperties(CommunityS3StorageProperties.class)
 public class S3ClientConfig {

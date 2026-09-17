@@ -17,10 +17,12 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Profile("!prod | web")
 @RequiredArgsConstructor
 public class PriceMoveQueryService {
 

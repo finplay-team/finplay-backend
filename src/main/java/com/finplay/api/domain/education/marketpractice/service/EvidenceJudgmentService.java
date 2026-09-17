@@ -9,9 +9,11 @@ import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 @Service
+@Profile("!prod | web")
 public class EvidenceJudgmentService {
 
 	private static final int MIN_OBSERVATION_COUNT_FOR_TIMED_REPETITION = 3;

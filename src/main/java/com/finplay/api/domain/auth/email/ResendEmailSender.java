@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 @Component
-@Profile("prod")
+@Profile("prod & web")
 public class ResendEmailSender implements EmailSender {
 
 	private static final String RESEND_BASE_URL = "https://api.resend.com";

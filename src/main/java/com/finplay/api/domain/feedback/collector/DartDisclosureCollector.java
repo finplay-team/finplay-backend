@@ -22,7 +22,7 @@ import org.springframework.web.client.RestClientException;
 
 @Slf4j
 @Component
-@Profile("prod")
+@Profile("prod & scheduler")
 public class DartDisclosureCollector implements DisclosureCollector {
 
 	private static final String DART_BASE_URL = "https://opendart.fss.or.kr";

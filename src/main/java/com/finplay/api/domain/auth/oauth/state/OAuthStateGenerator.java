@@ -15,9 +15,11 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Component
+@Profile("!prod | web")
 public class OAuthStateGenerator {
 
 	private static final int NONCE_BYTE_LENGTH = 32;

@@ -2,9 +2,11 @@ package com.finplay.api.domain.feedback.service;
 
 import com.finplay.api.domain.market.entity.Instrument;
 import com.finplay.api.domain.market.entity.Market;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Component
+@Profile("!prod | (prod & scheduler)")
 public class NewsSearchQueryBuilder {
 
 	private static final String QUERY_DELIMITER = " ";

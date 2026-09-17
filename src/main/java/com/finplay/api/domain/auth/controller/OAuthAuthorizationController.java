@@ -8,6 +8,7 @@ import com.finplay.api.domain.auth.token.AuthenticatedUser;
 import com.finplay.api.global.exception.BusinessException;
 import com.finplay.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@Profile("!prod | web")
 @RequestMapping("/api/auth/oauth")
 @RequiredArgsConstructor
 public class OAuthAuthorizationController {

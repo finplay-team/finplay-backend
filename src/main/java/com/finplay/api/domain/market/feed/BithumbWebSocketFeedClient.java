@@ -28,7 +28,7 @@ import tools.jackson.databind.ObjectMapper;
 
 @Slf4j
 @Component
-@Profile("prod")
+@Profile("prod & scheduler")
 @RequiredArgsConstructor
 public class BithumbWebSocketFeedClient implements BithumbFeedClient {
 

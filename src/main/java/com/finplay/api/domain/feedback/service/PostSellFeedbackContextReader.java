@@ -9,10 +9,12 @@ import com.finplay.api.global.exception.BusinessException;
 import com.finplay.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.Hibernate;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 @Component
+@Profile("!prod | web")
 @RequiredArgsConstructor
 class PostSellFeedbackContextReader {
 

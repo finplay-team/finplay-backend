@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
 
 @Component
-@Profile({"prod", "oauth-real"})
+@Profile("(prod & web) | (!prod & oauth-real)")
 public final class KakaoOAuthAuthorizationProvider implements OAuthAuthorizationProvider {
 
 	private static final String AUTHORIZATION_ENDPOINT = "https://kauth.kakao.com/oauth/authorize";
