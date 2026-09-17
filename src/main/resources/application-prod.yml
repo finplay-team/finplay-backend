@@ -12,6 +12,9 @@ spring:
       host: ${REDIS_HOST}
       port: ${REDIS_PORT}
 
+aws:
+  region: ${AWS_REGION}
+
 # 이메일 발송(Resend) — 운영 프로필의 ResendEmailSender만 사용한다. 값은 환경변수로 주입.
 # 이 설정은 prod 프로필에서만 로드되므로 로컬·테스트는 RESEND_API_KEY·EMAIL_FROM 없이 기동한다.
 resend:
@@ -30,8 +33,8 @@ finplay:
   community:
     image-storage:
       # 커뮤니티 첨부 이미지 저장소를 S3로 전환(이슈 #330) — 버킷 이름은 시크릿이 아니지만
-      # 기존 fail-fast 관례(DB_URL 등)를 그대로 따라 기본값 없이 참조한다. 자격 증명·리전은
-      # SDK 기본 체인(EC2 IAM 인스턴스 프로파일, AWS_REGION)에 맡긴다 — 커스텀 키를 추가하지 않는다.
+      # 기존 fail-fast 관례(DB_URL 등)를 그대로 따라 기본값 없이 참조한다. 자격 증명은
+      # SDK 기본 체인(EC2 IAM 인스턴스 프로파일)에 맡기고, 리전은 AWS_REGION에서 주입한다.
       s3:
         bucket: ${COMMUNITY_S3_BUCKET}
   cors:

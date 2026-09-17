@@ -36,6 +36,18 @@
 | 01:12 | main | `terraform validate` | 캐시된 provider 플러그인 실행 환경 오류로 1차 실패 |
 | 01:13 | main | 승인된 환경에서 `terraform validate` 재실행 | Terraform 구성 검증 통과 |
 | 01:14 | main | `git add`로 차단사항 수정 파일만 stage 후 `git diff --cached --check` 및 `git commit -m \"fix: 스케줄러 readiness health check 보강\"` | Scheduler readiness health check 차단사항 수정 커밋 완료; 결과 문서와 기존 미추적 파일은 커밋에서 제외 |
+| 01:26 | main | `git add Dockerfile.runtime` 후 `git diff --cached --check` 및 `git commit -m \"fix: 스케줄러 시작 전 readiness marker 정리\"` | 컨테이너 시작 전 stale marker 정리 커밋 완료; 결과 문서와 기존 미추적 파일은 커밋에서 제외 |
+| 01:36 | main | `./gradlew build --no-daemon --max-workers=1` | 최신 브랜치 기준 전체 테스트·컴파일·SpotBugs·build 성공; 테스트 종료 과정의 기존 Redis shutdown warning만 확인 |
+| 02:30 | main | `./gradlew compileJava` | `S3ClientConfig`가 `AWS_REGION`을 명시적 `Region`으로 주입하도록 변경한 뒤 Java 컴파일 성공 |
+| 02:31 | main | `./gradlew test --tests \"com.finplay.api.ProdWebProfileContextIntegrationTest\"` | Mock 없이 실제 `S3Client` 빈을 생성하고 `ap-northeast-2` 리전 설정을 검증; 테스트 성공 |
+| 02:32 | main | `./gradlew spotlessCheck` 및 `./gradlew compileJava` | Java 포맷 검사와 포맷 반영 후 최종 production 컴파일 성공 |
+| 02:34 | main | `./gradlew test --tests \"com.finplay.api.ProdWebNewsBatchContextIntegrationTest\"` | 동일 `prod,web` 컨텍스트의 기존 영향 확인; 테스트 성공 |
+| 02:37 | main | `./gradlew spotlessJavaCheck compileJava compileTestJava test --tests 'com.finplay.api.ProdWebProfileContextIntegrationTest' --tests 'com.finplay.api.ProdWebNewsBatchContextIntegrationTest' --tests 'com.finplay.api.domain.community.storage.FileStorageServiceProfileTest' --no-daemon --max-workers=1` | 관련 Web Context·뉴스/배치 Context·S3 Profile 테스트와 컴파일·포맷 검사 성공 |
+| 02:44 | main | `./gradlew test --no-daemon --max-workers=1` | 전체 테스트 성공; 기존 Redis shutdown warning만 확인 |
+| 02:44 | main | `./gradlew spotbugsMain --no-daemon --max-workers=1` | SpotBugs 정적 분석 성공 |
+| 02:48 | main | S3 Region 설정 외부화 | Java 기본값을 제거하고 `application-prod.yml`의 `AWS_REGION` 주입 구조로 변경; 테스트 런타임에는 비밀이 아닌 테스트용 Region만 주입 |
+| 02:54 | main | `./gradlew test --no-daemon --max-workers=1` | 외부화 변경 반영 후 전체 테스트 성공; 기존 Redis shutdown warning만 확인 |
+| 02:55 | main | S3 Region 입력 경로 정리 | `build.gradle`의 Region 고정값을 제거하고 CI에서는 저장소 Variable `AWS_REGION`, 운영에서는 `.env`의 `AWS_REGION`을 사용하도록 변경 |
 
 ## 현재 분석 결과
 
