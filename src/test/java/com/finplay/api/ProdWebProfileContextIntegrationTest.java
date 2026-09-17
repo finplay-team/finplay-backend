@@ -5,31 +5,50 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.finplay.api.domain.account.controller.AccountController;
 import com.finplay.api.domain.auth.config.SecurityConfig;
 import com.finplay.api.domain.feedback.collector.DartCorpCodeRegistry;
+import com.finplay.api.domain.feedback.service.CryptoPriceMoveWatcher;
 import com.finplay.api.domain.feedback.service.FeedbackBatchService;
 import com.finplay.api.domain.feedback.service.NewsSearchQueryBuilder;
 import com.finplay.api.domain.feedback.service.NewsTitleFilter;
+import com.finplay.api.domain.market.config.BithumbFeedConfig;
+import com.finplay.api.domain.market.config.KisProperties;
 import com.finplay.api.domain.market.config.KisRestClientConfig;
 import com.finplay.api.domain.market.controller.StockPriceSseController;
+import com.finplay.api.domain.market.feed.BithumbFeedLeaderLock;
 import com.finplay.api.domain.market.feed.BithumbFeedLifecycle;
+import com.finplay.api.domain.market.feed.BithumbFeedStatusReconciler;
+import com.finplay.api.domain.market.feed.BithumbRestTickerPoller;
+import com.finplay.api.domain.market.feed.BithumbWebSocketFeedClient;
+import com.finplay.api.domain.market.service.CryptoPriceSnapshotService;
 import com.finplay.api.domain.market.service.KisDailyCandleClientImpl;
 import com.finplay.api.domain.market.service.KisHistoricalCandleClientImpl;
 import com.finplay.api.domain.market.service.KisHistoricalCandleCollector;
+import com.finplay.api.domain.market.service.StockCollectionLock;
 import com.finplay.api.domain.market.service.StockDailyCandleCollector;
 import com.finplay.api.domain.market.service.StockPriceStreamService;
+import com.finplay.api.domain.market.service.StockReplaySessionLock;
+import com.finplay.api.domain.market.service.StockReplaySessionScheduler;
 import com.finplay.api.domain.market.sse.SseEmitterRegistry;
 import com.finplay.api.domain.market.store.PriceStore;
+import com.finplay.api.domain.order.config.LimitOrderFillExecutorConfig;
+import com.finplay.api.domain.order.listener.ExitPlanTriggerListener;
 import com.finplay.api.domain.order.listener.LimitOrderTriggerListener;
+import com.finplay.api.domain.order.service.ExitPlanFillService;
+import com.finplay.api.domain.order.service.LimitOrderFillExecutorRouter;
 import com.finplay.api.domain.order.service.LimitOrderFillService;
 import com.finplay.api.domain.ranking.service.RankingRebuildService;
 import com.finplay.api.global.config.SchedulingConfig;
 import com.finplay.api.global.exception.GlobalExceptionHandler;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.event.ApplicationListenerMethodAdapter;
+import org.springframework.context.support.AbstractApplicationContext;
 import org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor;
+import org.springframework.scheduling.config.ScheduledTaskHolder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -63,6 +82,7 @@ class ProdWebProfileContextIntegrationTest {
 		assertThat(applicationContext.getBeanNamesForType(GlobalExceptionHandler.class)).hasSize(1);
 		assertThat(applicationContext.getBeanNamesForType(PriceStore.class)).hasSize(1);
 		assertThat(applicationContext.getBeanNamesForType(LimitOrderFillService.class)).hasSize(1);
+		assertThat(applicationContext.getBeanNamesForType(ExitPlanFillService.class)).hasSize(1);
 		assertThat(applicationContext.getBeanNamesForType(StockPriceStreamService.class)).hasSize(1);
 		assertThat(applicationContext.getBeanNamesForType(SseEmitterRegistry.class)).hasSize(1);
 	}
@@ -72,13 +92,28 @@ class ProdWebProfileContextIntegrationTest {
 	void webRoleDoesNotCreateSchedulerBeansOrSchedulingInfrastructure() {
 		assertThat(applicationContext.getBeanNamesForType(SchedulingConfig.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(ScheduledAnnotationBeanPostProcessor.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(ScheduledTaskHolder.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(FeedbackBatchService.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(BithumbFeedConfig.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(BithumbFeedLeaderLock.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(BithumbFeedLifecycle.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(BithumbFeedStatusReconciler.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(BithumbRestTickerPoller.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(BithumbWebSocketFeedClient.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(CryptoPriceSnapshotService.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(CryptoPriceMoveWatcher.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(RankingRebuildService.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(LimitOrderTriggerListener.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(ExitPlanTriggerListener.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(LimitOrderFillExecutorConfig.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(LimitOrderFillExecutorRouter.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(KisProperties.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(KisRestClientConfig.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(KisHistoricalCandleClientImpl.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(KisDailyCandleClientImpl.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(StockCollectionLock.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(StockReplaySessionLock.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(StockReplaySessionScheduler.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(DartCorpCodeRegistry.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(NewsSearchQueryBuilder.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(NewsTitleFilter.class)).isEmpty();
@@ -86,5 +121,18 @@ class ProdWebProfileContextIntegrationTest {
 		assertThat(applicationContext.getBeanNamesForType(StockDailyCandleCollector.class)).isEmpty();
 		assertThat(applicationContext.containsBean("kisHistoricalCandleImportWriter")).isFalse();
 		assertThat(applicationContext.containsBean("stockDailyCandleImportWriter")).isFalse();
+		assertThat(registeredEventListenerMethods())
+			.doesNotContain(
+				"com.finplay.api.domain.order.listener.LimitOrderTriggerListener.onPriceUpdated",
+				"com.finplay.api.domain.order.listener.ExitPlanTriggerListener.onPriceUpdated");
+	}
+
+	private List<String> registeredEventListenerMethods() {
+		return ((AbstractApplicationContext)applicationContext).getApplicationListeners().stream()
+			.filter(ApplicationListenerMethodAdapter.class::isInstance)
+			.map(ApplicationListenerMethodAdapter.class::cast)
+			.map(ApplicationListenerMethodAdapter::getTargetMethod)
+			.map(method -> method.getDeclaringClass().getName() + "." + method.getName())
+			.toList();
 	}
 }
