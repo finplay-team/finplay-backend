@@ -35,10 +35,15 @@
 | 22:52 | main | `./gradlew test --no-daemon --max-workers=1 --tests '...StockMarketTransportEventTest' --tests '...StockMarketEventPublisherTest' --tests '...StockMarketEventSubscriberTest' --tests '...StockPriceStreamServiceTest' --tests '...SseEmitterRegistryTest' --tests '...ProdWebProfileContextIntegrationTest' --tests '...ProdSchedulerProfileContextIntegrationTest'` | transport 테스트 보강 후 29개 관련 테스트 최종 통과; 기존 Redis shutdown 경고 외 실패 없음 |
 | 22:56 | main | `./gradlew build --no-daemon --max-workers=1` | 전체 빌드에서 기존 `ProdWebNewsBatchContextIntegrationTest`가 Web scheduling post-processor를 0개로 기대해 실패; 사용자 요청으로 빌드 중지 |
 | 22:57 | main | `./gradlew spotlessApply --no-daemon --max-workers=1 && ./gradlew test --no-daemon --max-workers=1 --tests 'com.finplay.api.ProdWebNewsBatchContextIntegrationTest'` | Web heartbeat 활성화에 맞춘 기존 Profile 테스트 기대값 보정 후 대상 테스트 통과 |
+| 23:19 | main | `config/spotbugs/exclude.xml`에 `StockPriceStreamService`의 두 `EI_EXPOSE_REP2` 항목을 클래스·필드 단위로 좁게 제외 | Spring 관리 Bean 참조를 방어적 복사하지 않는 의도된 구조를 SpotBugs에 명시; 운영 코드와 비즈니스 로직은 변경하지 않음 |
+| 23:19 | main | `./gradlew spotbugsMain --no-daemon --max-workers=1` | SpotBugs 성공 |
+| 23:19 | main | `./gradlew build --no-daemon --max-workers=1` | 전체 build 성공; 테스트·JaCoCo·SpotBugs·Spotless 검증 단계 통과 |
 
 ## 구현 결과
 
 - Scheduler 주식 가격·시장 상태 transport publisher와 Web 독립 Redis subscriber/local SSE forwarder를 추가했다.
 - Web profile에 scheduling을 활성화하고 `SseEmitterRegistry`를 Web 소유로 정렬했다.
 - transport·SSE·Profile 경계 관련 테스트를 추가·수정하고 통과시켰다.
-- 전체 `./gradlew test`와 `./gradlew build`는 최종 검증 전까지 미실행 상태다.
+- 전체 테스트 단계는 `./gradlew build` 내부 `:test`로 통과했다.
+- `spotbugsMain`의 `StockPriceStreamService` 참조 보관 경고는 해당 클래스·필드에 한정한 제외 규칙으로 처리했다.
+- 최종 `./gradlew build --no-daemon --max-workers=1`은 성공했다.

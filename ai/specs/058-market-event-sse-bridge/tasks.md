@@ -30,8 +30,8 @@
 - [x] transport 직렬화·다중 Web fan-out·loop 방지·emitter 실패 격리 테스트 작성
 - [x] `prod,web`/`prod,scheduler` ApplicationContext 검증
 - [x] Web 재연결 시 기존 snapshot recovery 계약 유지 및 Redis publish 실패 격리 검증
-- [ ] 전체 `./gradlew test` 실행
-- [ ] 전체 `./gradlew build` 실행
+- [x] 전체 테스트 단계 실행 (`./gradlew build` 내부 `:test`)
+- [x] 전체 `./gradlew build` 실행
 
 ## 이번 단계에서 수행하지 않는 항목
 
