@@ -24,11 +24,14 @@ import com.finplay.api.domain.market.service.KisHistoricalCandleClientImpl;
 import com.finplay.api.domain.market.service.KisHistoricalCandleCollector;
 import com.finplay.api.domain.market.service.StockCollectionLock;
 import com.finplay.api.domain.market.service.StockDailyCandleCollector;
+import com.finplay.api.domain.market.service.StockPriceScheduler;
 import com.finplay.api.domain.market.service.StockPriceStreamService;
 import com.finplay.api.domain.market.service.StockReplaySessionLock;
 import com.finplay.api.domain.market.service.StockReplaySessionScheduler;
 import com.finplay.api.domain.market.sse.SseEmitterRegistry;
 import com.finplay.api.domain.market.store.PriceStore;
+import com.finplay.api.domain.market.transport.StockMarketEventPublisher;
+import com.finplay.api.domain.market.transport.StockMarketEventSubscriber;
 import com.finplay.api.domain.order.config.LimitOrderFillExecutorConfig;
 import com.finplay.api.domain.order.listener.ExitPlanTriggerListener;
 import com.finplay.api.domain.order.listener.LimitOrderTriggerListener;
@@ -74,8 +77,7 @@ class ProdSchedulerProfileContextIntegrationTest {
 		scheduledMethodName(KisHistoricalCandleCollector.class, "retryPendingInstruments"),
 		scheduledMethodName(StockDailyCandleCollector.class, "collect"),
 		scheduledMethodName(StockReplaySessionScheduler.class, "resolveTodaySession"),
-		scheduledMethodName(StockPriceStreamService.class, "publishScheduledUpdates"),
-		scheduledMethodName(SseEmitterRegistry.class, "sendHeartbeat"));
+		scheduledMethodName(StockPriceScheduler.class, "publishScheduledUpdates"));
 
 	@Autowired
 	private ApplicationContext applicationContext;
@@ -138,7 +140,10 @@ class ProdSchedulerProfileContextIntegrationTest {
 		assertThat(applicationContext.getBeanNamesForType(LimitOrderFillService.class)).hasSize(1);
 		assertThat(applicationContext.getBeanNamesForType(ExitPlanFillService.class)).hasSize(1);
 		assertThat(applicationContext.getBeanNamesForType(StockPriceStreamService.class)).hasSize(1);
-		assertThat(applicationContext.getBeanNamesForType(SseEmitterRegistry.class)).hasSize(1);
+		assertThat(applicationContext.getBeanNamesForType(StockPriceScheduler.class)).hasSize(1);
+		assertThat(applicationContext.getBeanNamesForType(StockMarketEventPublisher.class)).hasSize(1);
+		assertThat(applicationContext.getBeanNamesForType(StockMarketEventSubscriber.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(SseEmitterRegistry.class)).isEmpty();
 	}
 
 	private List<String> registeredEventListenerMethods() {

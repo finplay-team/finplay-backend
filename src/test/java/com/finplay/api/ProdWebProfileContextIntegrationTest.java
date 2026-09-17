@@ -24,11 +24,14 @@ import com.finplay.api.domain.market.service.KisHistoricalCandleClientImpl;
 import com.finplay.api.domain.market.service.KisHistoricalCandleCollector;
 import com.finplay.api.domain.market.service.StockCollectionLock;
 import com.finplay.api.domain.market.service.StockDailyCandleCollector;
+import com.finplay.api.domain.market.service.StockPriceScheduler;
 import com.finplay.api.domain.market.service.StockPriceStreamService;
 import com.finplay.api.domain.market.service.StockReplaySessionLock;
 import com.finplay.api.domain.market.service.StockReplaySessionScheduler;
 import com.finplay.api.domain.market.sse.SseEmitterRegistry;
 import com.finplay.api.domain.market.store.PriceStore;
+import com.finplay.api.domain.market.transport.StockMarketEventPublisher;
+import com.finplay.api.domain.market.transport.StockMarketEventSubscriber;
 import com.finplay.api.domain.order.config.LimitOrderFillExecutorConfig;
 import com.finplay.api.domain.order.listener.ExitPlanTriggerListener;
 import com.finplay.api.domain.order.listener.LimitOrderTriggerListener;
@@ -48,6 +51,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.event.ApplicationListenerMethodAdapter;
 import org.springframework.context.support.AbstractApplicationContext;
 import org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor;
+import org.springframework.scheduling.config.ScheduledTask;
 import org.springframework.scheduling.config.ScheduledTaskHolder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.context.ActiveProfiles;
@@ -91,8 +95,14 @@ class ProdWebProfileContextIntegrationTest {
 	@DisplayName("prod,web에서는 Scheduler와 수집 전용 Bean 및 scheduling infrastructure가 생성되지 않는다")
 	void webRoleDoesNotCreateSchedulerBeansOrSchedulingInfrastructure() {
 		assertThat(applicationContext.getBeanNamesForType(SchedulingConfig.class)).isEmpty();
-		assertThat(applicationContext.getBeanNamesForType(ScheduledAnnotationBeanPostProcessor.class)).isEmpty();
-		assertThat(applicationContext.getBeanNamesForType(ScheduledTaskHolder.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(ScheduledAnnotationBeanPostProcessor.class)).hasSize(1);
+		assertThat(applicationContext.getBeanNamesForType(ScheduledTaskHolder.class)).hasSize(1);
+		assertThat(applicationContext.getBeanNamesForType(StockMarketEventSubscriber.class)).hasSize(1);
+		assertThat(applicationContext.getBeanNamesForType(StockMarketEventPublisher.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(StockPriceScheduler.class)).isEmpty();
+		assertThat(registeredScheduledMethodNames())
+			.contains(scheduledMethodName(SseEmitterRegistry.class, "sendHeartbeat"))
+			.noneMatch(name -> name.contains(StockPriceScheduler.class.getName()));
 		assertThat(applicationContext.getBeanNamesForType(FeedbackBatchService.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(BithumbFeedConfig.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(BithumbFeedLeaderLock.class)).isEmpty();
@@ -125,6 +135,21 @@ class ProdWebProfileContextIntegrationTest {
 			.doesNotContain(
 				"com.finplay.api.domain.order.listener.LimitOrderTriggerListener.onPriceUpdated",
 				"com.finplay.api.domain.order.listener.ExitPlanTriggerListener.onPriceUpdated");
+	}
+
+	private List<String> registeredScheduledMethodNames() {
+		return applicationContext.getBean(ScheduledTaskHolder.class).getScheduledTasks().stream()
+			.map(ScheduledTask::toString)
+			.toList();
+	}
+
+	private static String scheduledMethodName(Class<?> type, String methodName) {
+		try {
+			type.getMethod(methodName);
+		} catch (NoSuchMethodException ex) {
+			throw new IllegalStateException(ex);
+		}
+		return type.getName() + "." + methodName;
 	}
 
 	private List<String> registeredEventListenerMethods() {

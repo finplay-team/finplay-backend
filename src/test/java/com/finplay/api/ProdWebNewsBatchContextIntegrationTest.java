@@ -80,8 +80,8 @@ class ProdWebNewsBatchContextIntegrationTest {
 		assertThat(applicationContext.getBeanNamesForType(NewsSearchQueryBuilder.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(NewsTitleFilter.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(SchedulingConfig.class)).isEmpty();
-		assertThat(applicationContext.getBeanNamesForType(ScheduledAnnotationBeanPostProcessor.class)).isEmpty();
-		assertThat(applicationContext.getBeanNamesForType(ScheduledTaskHolder.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(ScheduledAnnotationBeanPostProcessor.class)).hasSize(1);
+		assertThat(applicationContext.getBeanNamesForType(ScheduledTaskHolder.class)).hasSize(1);
 	}
 
 	@Test
