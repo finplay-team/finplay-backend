@@ -137,7 +137,7 @@ Pub/Sub는 **모든 Web 인스턴스가 같은 메시지를 받아야 하는 bro
 | Scheduler 재시작 | 기존 profile lifecycle과 feed 재연결을 따른다. transport는 새 이벤트부터 발행하며 Web은 다음 이벤트 또는 재접속 snapshot으로 복구한다 |
 | Web 재시작 | 구독을 다시 열고 신규 SSE 연결에 snapshot을 먼저 보낸다. 중단 중 과거 tick replay는 제공하지 않는다 |
 | Web 한 대 중단 | 다른 Web 인스턴스의 subscriber·SSE는 계속 동작한다. ALB가 재연결을 다른 Web으로 보낼 수 있다 |
-| Redis Pub/Sub 일시 장애 | Scheduler 가격 저장·자동체결은 transport 발행 실패와 분리한다. Web subscriber는 Redis client 재연결 정책을 따르고 snapshot으로 최신 상태를 회복한다 |
+| Redis Pub/Sub 일시 장애 | Scheduler 가격 저장·자동체결은 transport 발행 실패와 분리한다. Web subscriber는 Redis client 재연결 정책을 따르고 snapshot으로 최신 상태를 회복한다. 발행 실패 시 해당 실시간 SSE 이벤트는 유실될 수 있으며 Pub/Sub은 과거 이벤트 replay를 제공하지 않는다 |
 | 역직렬화 실패 | 해당 메시지를 폐기하고 안전한 메타데이터만 로그·지표로 남긴다. listener thread와 다른 client를 중단하지 않는다 |
 | 한 emitter 전송 실패 | 해당 emitter만 종료·정리하고 같은 이벤트의 다른 emitter는 계속 전송한다 |
 | 메시지 순서 역전 | `sourceTime`/event id 기준으로 오래된 update를 무시하거나 snapshot으로 수렴시킨다. 주문 판단에는 사용하지 않는다 |

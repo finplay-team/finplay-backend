@@ -92,8 +92,8 @@ class ProdWebProfileContextIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("prod,web에서는 Scheduler와 수집 전용 Bean 및 scheduling infrastructure가 생성되지 않는다")
-	void webRoleDoesNotCreateSchedulerBeansOrSchedulingInfrastructure() {
+	@DisplayName("prod,web에서는 Scheduler 업무는 등록되지 않고 Web heartbeat scheduling만 유지된다")
+	void webRoleDoesNotCreateSchedulerWorkAndKeepsHeartbeatScheduling() {
 		assertThat(applicationContext.getBeanNamesForType(SchedulingConfig.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(ScheduledAnnotationBeanPostProcessor.class)).hasSize(1);
 		assertThat(applicationContext.getBeanNamesForType(ScheduledTaskHolder.class)).hasSize(1);
