@@ -58,6 +58,7 @@ import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest(properties = {
 	"spring.data.redis.port=6379",
+	"aws.region=us-east-1",
 	"resend.api-key=test-resend-api-key",
 	"email.from=no-reply@finplay.test",
 	"finplay.community.image-storage.s3.bucket=test-bucket",
