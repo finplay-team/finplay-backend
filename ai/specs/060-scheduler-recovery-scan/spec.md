@@ -22,16 +22,16 @@ Issue #589의 Web/Scheduler 런타임 분리 후, Scheduler가 재시작되거�
 
 ## 요구사항
 
-- [ ] **RECOVERY-001** `prod,scheduler` 역할에서만 재검사 실행부를 생성하고 실행한다. `prod,web`에서는 재검사 `@Scheduled`·`ApplicationReadyEvent` 실행부가 생성·등록되지 않는다.
-- [ ] **RECOVERY-002** Scheduler의 `ApplicationReadyEvent` 이후 한 번 재검사하고, 시세 이벤트 누락을 보완할 정기 재검사를 추가한다. 시작 시 최신 가격이 없거나 유효하지 않으면 해당 종목을 건너뛰고 다음 정기 실행에서 다시 시도한다.
-- [ ] **RECOVERY-003** 코인 실물 종목별 최신 가격 snapshot을 기준으로 지정가와 OCO를 모두 재검사한다. 한 종목의 실패가 다른 종목 또는 같은 실행의 다른 체결 작업을 중단시키지 않는다.
-- [ ] **RECOVERY-004** 지정가 재검사는 기존 `LimitOrderTriggerListener`와 `OrderRepository.findPendingLimitOrdersToFill`의 매수 `currentPrice <= limitPrice`, 매도 `currentPrice >= limitPrice`, `PENDING`, 코인·일반 주문 조건을 재사용한다. 교육용 price session/attempt 주문은 기존 Repository 제외 조건을 그대로 따른다.
-- [ ] **RECOVERY-005** OCO 재검사는 기존 `ExitPlanTriggerListener`와 `ExitPlanRepository.findPendingExitPlansToFill`의 `PENDING`, 익절 `currentPrice >= takeProfitPrice`, 손절 `currentPrice <= stopLossPrice` 조건을 재사용한다. 교육용 attempt 귀속 OCO는 기존 제외 조건을 그대로 따른다.
-- [ ] **RECOVERY-006** 재검사 체결은 기존 `LimitOrderFillService`·`ExitPlanFillService`를 호출한다. 계좌·보유·체결 원장·예약 해제/확정·FIFO·OCO 반대 조건 취소·기존 상태 전이를 별도 구현하지 않는다.
-- [ ] **RECOVERY-007** 최신 가격이 후보 조회 후 비동기 체결 실행까지 변할 수 있으므로, 지정가 체결은 해당 가격 snapshot을 FillService까지 전달하고 order row lock 아래에서 조건을 다시 확인한다. 재확인 시 조건이 불충족이면 주문은 `PENDING`으로 남긴다.
-- [ ] **RECOVERY-008** 기존 Redis 분산락과 DB row lock을 함께 유지한다. 재검사 전체는 기존 `RedisLock` 패턴의 Scheduler 전용 분산락으로 중복 실행을 억제하고, 실제 체결은 기존 지정가 `order → account → holding` 잠금과 OCO `account → holding → plan` 잠금·상태 재확인을 따른다. 재검사 실행부가 먼저 원장을 잠그거나 FillService의 잠금 순서를 바꾸지 않는다.
-- [ ] **RECOVERY-009** `FILLED`, `CANCELLED`, `EXPIRED` 상태는 체결 대상이 아니다. Repository와 FillService 모두 `PENDING` allow-list를 기준으로 삼고, 동시 취소·체결·재검사에서는 먼저 row lock을 확보한 트랜잭션의 상태 전이만 성공한다.
-- [ ] **RECOVERY-010** 개별 종목·개별 후보·개별 청크의 실패는 로그로 격리하고 전체 Scheduler 스레드, 다른 종목의 재검사, 다른 종류의 체결을 중단시키지 않는다. 기존 지정가 청크 원자성은 유지하며 청크 내부 실패를 임의로 부분 커밋하지 않는다.
+- [x] **RECOVERY-001** `prod,scheduler` 역할에서만 재검사 실행부를 생성하고 실행한다. `prod,web`에서는 재검사 `@Scheduled`·`ApplicationReadyEvent` 실행부가 생성·등록되지 않는다.
+- [x] **RECOVERY-002** Scheduler의 `ApplicationReadyEvent` 이후 한 번 재검사하고, 시세 이벤트 누락을 보완할 정기 재검사를 추가한다. 시작 시 최신 가격이 없거나 유효하지 않으면 해당 종목을 건너뛰고 다음 정기 실행에서 다시 시도한다.
+- [x] **RECOVERY-003** 코인 실물 종목별 최신 가격 snapshot을 기준으로 지정가와 OCO를 모두 재검사한다. 한 종목의 실패가 다른 종목 또는 같은 실행의 다른 체결 작업을 중단시키지 않는다.
+- [x] **RECOVERY-004** 지정가 재검사는 기존 `LimitOrderTriggerListener`와 `OrderRepository.findPendingLimitOrdersToFill`의 매수 `currentPrice <= limitPrice`, 매도 `currentPrice >= limitPrice`, `PENDING`, 코인·일반 주문 조건을 재사용한다. 교육용 price session/attempt 주문은 기존 Repository 제외 조건을 그대로 따른다.
+- [x] **RECOVERY-005** OCO 재검사는 기존 `ExitPlanTriggerListener`와 `ExitPlanRepository.findPendingExitPlansToFill`의 `PENDING`, 익절 `currentPrice >= takeProfitPrice`, 손절 `currentPrice <= stopLossPrice` 조건을 재사용한다. 교육용 attempt 귀속 OCO는 기존 제외 조건을 그대로 따른다.
+- [x] **RECOVERY-006** 재검사 체결은 기존 `LimitOrderFillService`·`ExitPlanFillService`를 호출한다. 계좌·보유·체결 원장·예약 해제/확정·FIFO·OCO 반대 조건 취소·기존 상태 전이를 별도 구현하지 않는다.
+- [x] **RECOVERY-007** 최신 가격이 후보 조회 후 비동기 체결 실행까지 변할 수 있으므로, 지정가 체결은 해당 가격 snapshot을 FillService까지 전달하고 order row lock 아래에서 조건을 다시 확인한다. 재확인 시 조건이 불충족이면 주문은 `PENDING`으로 남긴다.
+- [x] **RECOVERY-008** 기존 Redis 분산락과 DB row lock을 함께 유지한다. 재검사 전체는 기존 `RedisLock` 패턴의 Scheduler 전용 분산락으로 중복 실행을 억제하고, 실제 체결은 기존 지정가 `order → account → holding` 잠금과 OCO `account → holding → plan` 잠금·상태 재확인을 따른다. 재검사 실행부가 먼저 원장을 잠그거나 FillService의 잠금 순서를 바꾸지 않는다.
+- [x] **RECOVERY-009** `FILLED`, `CANCELLED`, `EXPIRED` 상태는 체결 대상이 아니다. Repository와 FillService 모두 `PENDING` allow-list를 기준으로 삼고, 동시 취소·체결·재검사에서는 먼저 row lock을 확보한 트랜잭션의 상태 전이만 성공한다.
+- [x] **RECOVERY-010** 개별 종목·개별 후보·개별 청크의 실패는 로그로 격리하고 전체 Scheduler 스레드, 다른 종목의 재검사, 다른 종류의 체결을 중단시키지 않는다. 기존 지정가 청크 원자성은 유지하며 청크 내부 실패를 임의로 부분 커밋하지 않는다.
 
 ## 비즈니스 규칙
 
@@ -69,11 +69,11 @@ Issue #589의 Web/Scheduler 런타임 분리 후, Scheduler가 재시작되거�
 
 ## 완료 조건
 
-- [ ] `prod,scheduler`에서만 시작·정기 재검사 실행부가 등록되고 `prod,web`에서는 등록되지 않는다.
-- [ ] 재시작 시 영속 `PENDING` 지정가와 OCO가 유효한 최신 Redis 가격으로 재검사되어 조건 충족 대상만 기존 FillService 경로로 체결된다.
-- [ ] 이벤트를 전달하지 않은 상태에서도 정기 재검사로 조건 충족 대상이 체결된다.
-- [ ] 최신 가격이 stale/부재/연결 끊김이면 체결하지 않고, 조건 불충족이면 `PENDING`을 유지한다.
-- [ ] `FILLED`·`CANCELLED`·`EXPIRED` 대상이 재검사로 체결되지 않는다.
-- [ ] 재검사와 이벤트·취소가 동시에 실행되어도 지정가·OCO가 정확히 한 번만 원장을 변경하고 예약이 이중 소비·반환되지 않는다.
-- [ ] 한 종목·한 후보·한 청크의 실패가 다른 Scheduler 작업을 중단시키지 않는다.
-- [ ] 재시작·이벤트 누락·동시성·실패 격리 테스트가 ADR-0003의 적절한 테스트 레벨로 통과한다.
+- [x] `prod,scheduler`에서만 시작·정기 재검사 실행부가 등록되고 `prod,web`에서는 등록되지 않는다.
+- [x] 재시작 시 영속 `PENDING` 지정가와 OCO가 유효한 최신 Redis 가격으로 재검사되어 조건 충족 대상만 기존 FillService 경로로 체결된다.
+- [x] 이벤트를 전달하지 않은 상태에서도 정기 재검사로 조건 충족 대상이 체결된다.
+- [x] 최신 가격이 stale/부재/연결 끊김이면 체결하지 않고, 조건 불충족이면 `PENDING`을 유지한다.
+- [x] `FILLED`·`CANCELLED`·`EXPIRED` 대상이 재검사로 체결되지 않는다.
+- [x] 재검사와 이벤트·취소가 동시에 실행되어도 지정가·OCO가 정확히 한 번만 원장을 변경하고 예약이 이중 소비·반환되지 않는다.
+- [x] 한 종목·한 후보·한 청크의 실패가 다른 Scheduler 작업을 중단시키지 않는다.
+- [x] 재시작·이벤트 누락·동시성·실패 격리 테스트가 ADR-0003의 적절한 테스트 레벨로 통과한다.

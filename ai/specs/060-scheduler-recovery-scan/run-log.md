@@ -10,6 +10,10 @@
 | 20:04 | implementer | `./gradlew compileJava` | tasks.md 2~3번: 지정가 snapshot 전달 및 order lock 후 가격 조건 재확인 |
 | 20:32 | main | `./gradlew test --tests 'com.finplay.api.domain.order.OrderRecoveryScanSchedulerIntegrationTest' --no-daemon` | MySQL/Redis Testcontainers 통합 테스트 7건 통과 |
 | 20:33 | main | `./gradlew spotlessApply --no-daemon` | 통합 테스트 프로필을 `prod,web`로 분리하고 테스트에서 재검사 경계를 직접 구성한 뒤 포맷 통과 |
+| 20:35 | main | 대상 테스트 8개 클래스 실행 | 총 54건 통과, 실패·오류 0건 |
+| 20:36 | main | `./gradlew compileJava compileTestJava spotlessJavaCheck spotbugsMain spotbugsTest --no-daemon` | 컴파일·Spotless·SpotBugs 통과 (`spotbugsTest`는 저장소 설정상 SKIPPED) |
+| 20:40 | main | `./gradlew build --no-daemon` | 전체 빌드 성공, 테스트·coverage verification 포함 |
+| 20:41 | reviewer | origin/dev 대비 diff 리뷰 | PASS, 차단·권장·참고 지적 0건 |
 
 ## 모니터링 (사람용 요약)
 - 19:43 — `prod & scheduler` 전용 주문 재검사 진입점·Redis coordinator 락을 추가하고 포맷·컴파일을 통과했다.
