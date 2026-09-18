@@ -49,9 +49,10 @@ public class OrderRecoveryScanScheduler {
 		}
 		try {
 			List<Instrument> instruments = instrumentService.getRealInstrumentEntities(Market.CRYPTO);
+			FeedConnectionStatus connectionStatus = priceStore.getConnectionStatus();
 			for (Instrument instrument : instruments) {
 				try {
-					Optional<CryptoPriceDto> price = getLatestValidPrice(instrument.getSymbol());
+					Optional<CryptoPriceDto> price = getLatestValidPrice(instrument.getSymbol(), connectionStatus);
 					scanInstrument(trigger, instrument, price);
 				} catch (Exception e) {
 					log.error("종목별 주문 재검사 중 예외가 발생했습니다. trigger={}, symbol={}", trigger,
@@ -65,8 +66,8 @@ public class OrderRecoveryScanScheduler {
 		}
 	}
 
-	private Optional<CryptoPriceDto> getLatestValidPrice(String symbol) {
-		if (priceStore.getConnectionStatus() != FeedConnectionStatus.CONNECTED) {
+	private Optional<CryptoPriceDto> getLatestValidPrice(String symbol, FeedConnectionStatus connectionStatus) {
+		if (connectionStatus != FeedConnectionStatus.CONNECTED) {
 			return Optional.empty();
 		}
 		return priceStore.getLatestPrice(symbol)

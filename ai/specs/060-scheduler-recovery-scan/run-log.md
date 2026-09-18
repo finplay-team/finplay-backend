@@ -14,6 +14,12 @@
 | 20:36 | main | `./gradlew compileJava compileTestJava spotlessJavaCheck spotbugsMain spotbugsTest --no-daemon` | 컴파일·Spotless·SpotBugs 통과 (`spotbugsTest`는 저장소 설정상 SKIPPED) |
 | 20:40 | main | `./gradlew build --no-daemon` | 전체 빌드 성공, 테스트·coverage verification 포함 |
 | 20:41 | reviewer | origin/dev 대비 diff 리뷰 | PASS, 차단·권장·참고 지적 0건 |
+| 21:41 | main | `./gradlew compileJava --no-daemon` | 리뷰 권장 최적화: scan 실행당 `PriceStore.getConnectionStatus()` 1회 확인, compileJava 성공 |
+| 21:48 | main | `./gradlew spotlessApply --no-daemon` | 리뷰 권장 동시성 테스트 포맷 적용 |
+| 21:48 | main | `./gradlew test --tests 'com.finplay.api.domain.order.OrderRecoveryScanSchedulerIntegrationTest' --tests 'com.finplay.api.domain.order.service.OrderRecoveryScanSchedulerTest' --no-daemon` | 관련 테스트 16건 통과 |
+| 21:49 | main | `./gradlew test --tests 'com.finplay.api.domain.order.OrderRecoveryScanSchedulerIntegrationTest' --no-daemon` | 동시성 통합 테스트 9건 재실행 통과 |
+| 21:54 | main | `./gradlew build --no-daemon` | 권장 사항 반영 후 전체 빌드 성공 (`spotbugsTest`는 저장소 설정상 SKIPPED) |
+| 21:55 | main | `./gradlew test --tests 'com.finplay.api.domain.order.OrderRecoveryScanSchedulerIntegrationTest' --tests 'com.finplay.api.domain.order.service.OrderRecoveryScanSchedulerTest' --no-daemon` | 최종 단위·통합 테스트 16건 통과 |
 
 ## 모니터링 (사람용 요약)
 - 19:43 — `prod & scheduler` 전용 주문 재검사 진입점·Redis coordinator 락을 추가하고 포맷·컴파일을 통과했다.

@@ -133,6 +133,7 @@ class OrderRecoveryScanSchedulerTest {
 
 		verify(exitPlanTriggerListener).onPriceUpdated(argThat(event -> event.symbol().equals("BTC")));
 		verify(limitOrderTriggerListener).onPriceUpdated(argThat(event -> event.symbol().equals("ETH")));
+		verify(priceStore, org.mockito.Mockito.times(1)).getConnectionStatus();
 		verify(orderRecoveryScanLock).unlock("token");
 	}
 

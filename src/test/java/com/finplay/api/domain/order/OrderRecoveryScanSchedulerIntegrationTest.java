@@ -10,6 +10,7 @@ import com.finplay.api.domain.auth.entity.User;
 import com.finplay.api.domain.auth.repository.UserRepository;
 import com.finplay.api.domain.market.entity.Instrument;
 import com.finplay.api.domain.market.entity.Market;
+import com.finplay.api.domain.market.event.CryptoPriceUpdatedEvent;
 import com.finplay.api.domain.market.repository.InstrumentRepository;
 import com.finplay.api.domain.market.service.InstrumentService;
 import com.finplay.api.domain.market.store.FeedConnectionStatus;
@@ -36,6 +37,7 @@ import com.finplay.api.domain.order.repository.OrderRepository;
 import com.finplay.api.domain.order.repository.TradeRepository;
 import com.finplay.api.domain.order.service.ExitPlanFillService;
 import com.finplay.api.domain.order.service.ExitPlanService;
+import com.finplay.api.domain.order.service.LimitOrderCancelService;
 import com.finplay.api.domain.order.service.LimitOrderFillExecutorRouter;
 import com.finplay.api.domain.order.service.LimitOrderFillService;
 import com.finplay.api.domain.order.service.LimitOrderService;
@@ -46,6 +48,7 @@ import com.finplay.api.domain.portfolio.entity.Holding;
 import com.finplay.api.domain.portfolio.repository.HoldingRepository;
 import com.finplay.api.global.config.TestClock;
 import com.finplay.api.global.config.TestClockConfig;
+import com.finplay.api.global.exception.BusinessException;
 import com.finplay.api.global.lock.RedisLock;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -131,6 +134,9 @@ class OrderRecoveryScanSchedulerIntegrationTest {
 	private LimitOrderService limitOrderService;
 
 	@Autowired
+	private LimitOrderCancelService limitOrderCancelService;
+
+	@Autowired
 	private ExitPlanService exitPlanService;
 
 	@Autowired
@@ -157,6 +163,8 @@ class OrderRecoveryScanSchedulerIntegrationTest {
 	@Autowired
 	private TestClock clock;
 
+	private LimitOrderTriggerListener limitOrderTriggerListener;
+	private ExitPlanTriggerListener exitPlanTriggerListener;
 	private OrderRecoveryScanScheduler scheduler;
 
 	private final List<String> testEmails = new ArrayList<>();
@@ -166,13 +174,13 @@ class OrderRecoveryScanSchedulerIntegrationTest {
 	void setUp() {
 		clock.set(NOW);
 		LimitOrderFillExecutorProperties executorProperties = new LimitOrderFillExecutorProperties(false, 1, 1, 50);
-		LimitOrderTriggerListener limitOrderTriggerListener = new LimitOrderTriggerListener(
+		limitOrderTriggerListener = new LimitOrderTriggerListener(
 			instrumentService,
 			orderRepository,
 			limitOrderFillService,
 			mock(LimitOrderFillExecutorRouter.class),
 			executorProperties);
-		ExitPlanTriggerListener exitPlanTriggerListener = new ExitPlanTriggerListener(
+		exitPlanTriggerListener = new ExitPlanTriggerListener(
 			instrumentService,
 			exitPlanRepository,
 			exitPlanFillService);
@@ -281,6 +289,30 @@ class OrderRecoveryScanSchedulerIntegrationTest {
 		assertThat(countOrders(scenario.user().getId(), "MARKET")).isEqualTo(2L);
 	}
 
+	@Test
+	@DisplayName("scheduled 재검사와 시세 이벤트가 동시에 실행돼도 지정가와 OCO를 한 번만 체결한다")
+	void concurrentScheduledScanAndPriceEventCreateOneFill() throws Exception {
+		PreparedScenario scenario = preparePendingScenario();
+		putConnectedPrice(scenario.instrument(), TRIGGER_PRICE, NOW);
+		long tradesBeforeScan = countTrades(scenario.user().getId());
+
+		runConcurrently(scheduler::scanOnSchedule, () -> triggerPriceEvent(scenario));
+
+		assertFilledScenario(scenario, tradesBeforeScan);
+		assertThat(countOrders(scenario.user().getId(), "MARKET")).isEqualTo(2L);
+	}
+
+	@Test
+	@DisplayName("scheduled 재검사와 취소가 동시에 실행돼도 주문·OCO 원장과 예약이 정합성을 유지한다")
+	void concurrentScheduledScanAndCancellationKeepTerminalStateConsistent() throws Exception {
+		PreparedScenario scenario = preparePendingScenario();
+		putConnectedPrice(scenario.instrument(), TRIGGER_PRICE, NOW);
+
+		runConcurrently(scheduler::scanOnSchedule, () -> cancelPendingScenario(scenario));
+
+		assertTerminalRaceScenario(scenario);
+	}
+
 	private PreparedScenario preparePendingScenario() {
 		return preparePendingScenario(TRIGGER_PRICE);
 	}
@@ -351,6 +383,51 @@ class OrderRecoveryScanSchedulerIntegrationTest {
 		Holding holding = holdingRepository.findById(scenario.holdingId()).orElseThrow();
 		assertThat(account.getReservedCash()).isPositive();
 		assertThat(holding.getReservedQuantity()).isEqualByComparingTo(EXIT_QUANTITY);
+	}
+
+	private void triggerPriceEvent(PreparedScenario scenario) {
+		CryptoPriceUpdatedEvent event = new CryptoPriceUpdatedEvent(
+			scenario.instrument().getSymbol(), TRIGGER_PRICE, NOW, NOW);
+		limitOrderTriggerListener.onPriceUpdated(event);
+		exitPlanTriggerListener.onPriceUpdated(event);
+	}
+
+	private void cancelPendingScenario(PreparedScenario scenario) {
+		try {
+			limitOrderCancelService.cancelOrder(scenario.user().getId(), scenario.limitOrderId());
+		} catch (BusinessException ignored) {}
+		try {
+			exitPlanService.cancel(scenario.user().getId(), scenario.exitPlanId());
+		} catch (BusinessException ignored) {}
+	}
+
+	private void assertTerminalRaceScenario(PreparedScenario scenario) {
+		OrderStatus orderStatus = orderRepository.findById(scenario.limitOrderId()).orElseThrow().getStatus();
+		ExitPlanStatus planStatus = exitPlanRepository.findById(scenario.exitPlanId()).orElseThrow().getStatus();
+		assertThat(orderStatus).isIn(OrderStatus.PENDING, OrderStatus.FILLED, OrderStatus.CANCELLED);
+		assertThat(planStatus).isIn(
+			ExitPlanStatus.PENDING, ExitPlanStatus.FILLED_TAKE_PROFIT, ExitPlanStatus.CANCELLED);
+
+		boolean limitFilled = orderStatus == OrderStatus.FILLED;
+		boolean planFilled = planStatus == ExitPlanStatus.FILLED_TAKE_PROFIT;
+		assertThat(tradeRepository.findByOrderId(scenario.limitOrderId()).isPresent()).isEqualTo(limitFilled);
+		ExitPlan plan = exitPlanRepository.findById(scenario.exitPlanId()).orElseThrow();
+		assertThat(plan.getTriggeredOrder() != null).isEqualTo(planFilled);
+		assertThat(countTrades(scenario.user().getId())).isEqualTo(1L + (limitFilled ? 1 : 0) + (planFilled ? 1 : 0));
+		assertThat(countOrders(scenario.user().getId(), "MARKET")).isEqualTo(1L + (planFilled ? 1 : 0));
+
+		Account account = accountRepository.findById(scenario.account().getId()).orElseThrow();
+		Holding holding = holdingRepository.findById(scenario.holdingId()).orElseThrow();
+		if (orderStatus == OrderStatus.PENDING) {
+			assertThat(account.getReservedCash()).isPositive();
+		} else {
+			assertThat(account.getReservedCash()).isZero();
+		}
+		if (planStatus == ExitPlanStatus.PENDING) {
+			assertThat(holding.getReservedQuantity()).isEqualByComparingTo(EXIT_QUANTITY);
+		} else {
+			assertThat(holding.getReservedQuantity()).isZero();
+		}
 	}
 
 	private void putConnectedPrice(Instrument instrument, BigDecimal price, LocalDateTime receivedAt) {
