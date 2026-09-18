@@ -38,6 +38,8 @@ import com.finplay.api.domain.order.listener.LimitOrderTriggerListener;
 import com.finplay.api.domain.order.service.ExitPlanFillService;
 import com.finplay.api.domain.order.service.LimitOrderFillExecutorRouter;
 import com.finplay.api.domain.order.service.LimitOrderFillService;
+import com.finplay.api.domain.order.service.OrderRecoveryScanLock;
+import com.finplay.api.domain.order.service.OrderRecoveryScanScheduler;
 import com.finplay.api.domain.ranking.service.RankingRebuildService;
 import com.finplay.api.global.config.SchedulingConfig;
 import com.finplay.api.global.exception.GlobalExceptionHandler;
@@ -77,7 +79,8 @@ class ProdSchedulerProfileContextIntegrationTest {
 		scheduledMethodName(KisHistoricalCandleCollector.class, "retryPendingInstruments"),
 		scheduledMethodName(StockDailyCandleCollector.class, "collect"),
 		scheduledMethodName(StockReplaySessionScheduler.class, "resolveTodaySession"),
-		scheduledMethodName(StockPriceScheduler.class, "publishScheduledUpdates"));
+		scheduledMethodName(StockPriceScheduler.class, "publishScheduledUpdates"),
+		scheduledMethodName(OrderRecoveryScanScheduler.class, "scanOnSchedule"));
 
 	@Autowired
 	private ApplicationContext applicationContext;
@@ -103,6 +106,8 @@ class ProdSchedulerProfileContextIntegrationTest {
 		assertThat(applicationContext.getBeanNamesForType(RankingRebuildService.class)).hasSize(1);
 		assertThat(applicationContext.getBeanNamesForType(LimitOrderTriggerListener.class)).hasSize(1);
 		assertThat(applicationContext.getBeanNamesForType(ExitPlanTriggerListener.class)).hasSize(1);
+		assertThat(applicationContext.getBeanNamesForType(OrderRecoveryScanLock.class)).hasSize(1);
+		assertThat(applicationContext.getBeanNamesForType(OrderRecoveryScanScheduler.class)).hasSize(1);
 		assertThat(applicationContext.getBeanNamesForType(LimitOrderFillExecutorConfig.class)).hasSize(1);
 		assertThat(applicationContext.getBeanNamesForType(LimitOrderFillExecutorRouter.class)).hasSize(1);
 		assertThat(applicationContext.getBeanNamesForType(KisProperties.class)).hasSize(1);
@@ -125,7 +130,8 @@ class ProdSchedulerProfileContextIntegrationTest {
 		assertThat(registeredEventListenerMethods())
 			.contains(
 				"com.finplay.api.domain.order.listener.LimitOrderTriggerListener.onPriceUpdated",
-				"com.finplay.api.domain.order.listener.ExitPlanTriggerListener.onPriceUpdated");
+				"com.finplay.api.domain.order.listener.ExitPlanTriggerListener.onPriceUpdated",
+				"com.finplay.api.domain.order.service.OrderRecoveryScanScheduler.scanOnStartup");
 	}
 
 	@Test
