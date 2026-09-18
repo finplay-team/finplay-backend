@@ -19,6 +19,7 @@ locals {
     "SPRING_DATA_REDIS_SSL_ENABLED" = "true"
     "CORS_ALLOWED_ORIGINS"          = "https://www.${var.domain_name}"
     "OAUTH_STATE_COOKIE_SECURE"     = "true"
+    "AWS_REGION"                    = data.aws_region.current.name
     "ECR_REGISTRY"                  = "${data.aws_caller_identity.current.account_id}.dkr.ecr.ap-northeast-2.amazonaws.com"
     # application-prod.yml의 finplay.community.image-storage.s3.bucket이 기본값 없이 이 값을
     # 요구한다 — 없으면 CommunityS3StorageProperties가 기동 시점에 즉시 예외를 던진다
@@ -52,6 +53,8 @@ locals {
 }
 
 data "aws_caller_identity" "current" {}
+
+data "aws_region" "current" {}
 
 resource "aws_ssm_parameter" "generated" {
   for_each = local.generated_parameters
