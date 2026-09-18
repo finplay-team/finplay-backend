@@ -334,6 +334,52 @@ class LimitOrderFillServiceTest {
 	}
 
 	@Test
+	void fillIfPendingKeepsBuyOrderPendingWhenSnapshotDoesNotTriggerIt() {
+		Instrument instrument = cryptoInstrument();
+		Account account = account();
+		Order order = limitPendingOrder(account, instrument, OrderSide.BUY, "0.1", "1000000");
+		when(orderRepository.findByIdForUpdate(order.getId())).thenReturn(Optional.of(order));
+
+		service.fillIfPending(order.getId(), new BigDecimal("1000001"));
+
+		assertThat(order.getStatus()).isEqualTo(OrderStatus.PENDING);
+		verifyNoInteractions(accountService, tradeRepository, portfolioBuyService, portfolioSellService,
+			eventPublisher);
+	}
+
+	@Test
+	void fillIfPendingKeepsSellOrderPendingWhenSnapshotDoesNotTriggerIt() {
+		Instrument instrument = cryptoInstrument();
+		Account account = account();
+		Order order = limitPendingOrder(account, instrument, OrderSide.SELL, "0.1", "1000000");
+		when(orderRepository.findByIdForUpdate(order.getId())).thenReturn(Optional.of(order));
+
+		service.fillIfPending(order.getId(), new BigDecimal("999999"));
+
+		assertThat(order.getStatus()).isEqualTo(OrderStatus.PENDING);
+		verifyNoInteractions(accountService, tradeRepository, portfolioBuyService, portfolioSellService,
+			eventPublisher);
+	}
+
+	@Test
+	void fillIfPendingWithTriggeredSnapshotDelegatesToExistingBuyFillPath() {
+		Instrument instrument = cryptoInstrument();
+		Account account = account();
+		account.reserveCash(100_050L);
+		Order order = limitPendingOrder(account, instrument, OrderSide.BUY, "0.1", "1000000");
+		when(orderRepository.findByIdForUpdate(order.getId())).thenReturn(Optional.of(order));
+		when(accountService.getAccountByIdForUpdate(account.getId())).thenReturn(account);
+
+		service.fillIfPending(order.getId(), new BigDecimal("1000000"));
+
+		assertThat(order.getStatus()).isEqualTo(OrderStatus.FILLED);
+		verify(portfolioBuyService).applyBuyTrade(
+			eq(account), eq(instrument), any(Trade.class), eq(new BigDecimal("0.1")), eq(new BigDecimal("1000000")),
+			eq(50L), eq(NOW));
+		verify(tradeRepository).save(any(Trade.class));
+	}
+
+	@Test
 	void fillBatchFillsEachOrderInGivenOrder() {
 		Instrument instrument = cryptoInstrument();
 		Account account = account();
@@ -515,6 +561,34 @@ class LimitOrderFillServiceTest {
 
 		assertThat(order.getStatus()).isEqualTo(OrderStatus.FILLED);
 		verifyNoInteractions(eventPublisher);
+	}
+
+	@Test
+	void fillBatchKeepsNonTriggeredBuyPendingWhileTriggeredBuyUsesExistingBatchPath() {
+		Instrument instrument = cryptoInstrument();
+		Account account = account();
+		account.reserveCash(100_050L + 100_050L);
+		Order triggered = limitPendingOrder(account, instrument, OrderSide.BUY, "0.1", "1000000");
+		ReflectionTestUtils.setField(triggered, "id", 107L);
+		Order notTriggered = limitPendingOrder(account, instrument, OrderSide.BUY, "0.1", "999999");
+		ReflectionTestUtils.setField(notTriggered, "id", 108L);
+		when(orderRepository.findByIdInForUpdate(List.of(107L, 108L))).thenReturn(List.of(triggered, notTriggered));
+		when(accountService.getAccountsByIdsForUpdate(List.of(10L))).thenReturn(List.of(account));
+		when(portfolioBuyService.findExistingHoldingsForChunkUpdate(List.of(10L), instrument.getId()))
+			.thenReturn(List.of());
+		when(portfolioBuyService.applyBuyTrade(
+			eq(account), eq(instrument), any(Trade.class), eq(new BigDecimal("0.1")), eq(new BigDecimal("1000000")),
+			eq(50L), eq(NOW), any(Holding.class)))
+			.thenAnswer(invocation -> invocation.getArgument(7));
+
+		service.fillBatch(List.of(107L, 108L), new BigDecimal("1000000"));
+
+		assertThat(triggered.getStatus()).isEqualTo(OrderStatus.FILLED);
+		assertThat(notTriggered.getStatus()).isEqualTo(OrderStatus.PENDING);
+		verify(tradeRepository).save(any(Trade.class));
+		verify(portfolioBuyService).applyBuyTrade(
+			eq(account), eq(instrument), any(Trade.class), eq(new BigDecimal("0.1")), eq(new BigDecimal("1000000")),
+			eq(50L), eq(NOW), any(Holding.class));
 	}
 
 	private static Order limitPendingOrder(

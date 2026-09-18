@@ -92,6 +92,27 @@ class LimitOrderFillBatchAtomicityIntegrationTest {
 		assertThat(orderRepository.findById(valid2).orElseThrow().getStatus()).isEqualTo(OrderStatus.PENDING);
 	}
 
+	@Test
+	@DisplayName("snapshot 조건을 충족한 주문만 청크에서 체결되고 불충족 주문은 PENDING으로 남는다")
+	void fillBatchRechecksSnapshotConditionAfterBulkLocks() {
+		User user = createUser("batch-snapshot");
+		Account account = createAccount(user);
+		Instrument instrument = createCryptoInstrument("BATCHSNAP");
+		BigDecimal currentPrice = new BigDecimal("100000");
+		BigDecimal triggeredLimitPrice = new BigDecimal("100000");
+		BigDecimal notTriggeredLimitPrice = new BigDecimal("99999");
+		BigDecimal quantity = new BigDecimal("0.1");
+
+		Long triggered = createLimitOrder(user, instrument, triggeredLimitPrice, quantity, "batch-snapshot-triggered");
+		Long notTriggered = createLimitOrder(user, instrument, notTriggeredLimitPrice, quantity,
+			"batch-snapshot-pending");
+
+		limitOrderFillService.fillBatch(List.of(triggered, notTriggered), currentPrice);
+
+		assertThat(orderRepository.findById(triggered).orElseThrow().getStatus()).isEqualTo(OrderStatus.FILLED);
+		assertThat(orderRepository.findById(notTriggered).orElseThrow().getStatus()).isEqualTo(OrderStatus.PENDING);
+	}
+
 	private Long createLimitOrder(
 		User user, Instrument instrument, BigDecimal limitPrice, BigDecimal quantity, String idempotencyKey) {
 		LimitOrderResponse response = limitOrderService.createLimitOrder(

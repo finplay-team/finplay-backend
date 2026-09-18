@@ -7,6 +7,8 @@
 | 19:43 | implementer | `./gradlew compileJava` | tasks.md 1번 구현 및 ADR-0002 |
 | 19:51 | implementer | `./gradlew compileJava` | 리뷰 지적 반영: 종목별 PriceStore snapshot·예외 격리 |
 | 19:57 | implementer | `./gradlew compileJava` | Java 주석 금지 규칙에 따라 두 재검사 production 파일의 선두 주석 제거 후 컴파일 성공 |
+| 20:04 | implementer | `./gradlew compileJava` | tasks.md 2~3번: 지정가 snapshot 전달 및 order lock 후 가격 조건 재확인 |
 
 ## 모니터링 (사람용 요약)
 - 19:43 — `prod & scheduler` 전용 주문 재검사 진입점·Redis coordinator 락을 추가하고 포맷·컴파일을 통과했다.
+- 20:04 — 지정가 Listener와 FillService에 snapshot 전달·재확인을 연결하고 compileJava를 통과했다.
