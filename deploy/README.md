@@ -43,6 +43,10 @@ Scheduler는 non-web 애플리케이션이므로 Web과 같은 Actuator HTTP hea
 `SPRING_PROFILES_ACTIVE=prod`처럼 역할이 없는 값으로 실행하지 않으며, Web과 Scheduler는 반드시
 각자의 Profile을 사용한다.
 
+기존 EC2에 대한 첫 배포도 GitHub Actions가 최신 `compose.deploy.yaml`과 역할별 런타임 갱신 스크립트를
+먼저 전송한 뒤 진행한다. 따라서 Terraform user-data를 다시 실행하거나 기존 인스턴스를 교체해야만
+역할 Profile을 반영할 수 있는 구조가 아니다.
+
 앱 컨테이너가 호스트 포트 8080을 직접 연다(ADR-0022 — nginx 제거). 프론트가 다른 오리진(S3)에서 오므로 백엔드가 CORS로 열어야 한다 — `.env`의 `CORS_ALLOWED_ORIGINS`가 그 허용 목록이다. 값이 비어 있으면 `CorsConfig`가 기동 단계에서 fail-fast로 거부한다.
 
 **DB·캐시는 이 스택 안에 없다 (ADR-0020, 이슈 #326).** 예전에는 `compose.deploy.yaml`이 mysql·redis 컨테이너를 함께 띄웠지만, EC2를 종료하면 그 볼륨의 원장이 함께 사라지는 문제 때문에 RDS·ElastiCache로 분리했다. 그래서 이 스택이 띄우는 컨테이너는 **app 하나뿐이고**, 접속 정보는 전부 `.env`에서 온다. 로컬 개발(`compose.yaml` + `bootRun`)은 바뀌지 않았다 — 여전히 컨테이너 mysql·redis를 쓴다.
