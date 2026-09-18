@@ -38,6 +38,8 @@ import com.finplay.api.domain.order.listener.LimitOrderTriggerListener;
 import com.finplay.api.domain.order.service.ExitPlanFillService;
 import com.finplay.api.domain.order.service.LimitOrderFillExecutorRouter;
 import com.finplay.api.domain.order.service.LimitOrderFillService;
+import com.finplay.api.domain.order.service.OrderRecoveryScanLock;
+import com.finplay.api.domain.order.service.OrderRecoveryScanScheduler;
 import com.finplay.api.domain.ranking.service.RankingRebuildService;
 import com.finplay.api.global.config.SchedulingConfig;
 import com.finplay.api.global.exception.GlobalExceptionHandler;
@@ -116,6 +118,8 @@ class ProdWebProfileContextIntegrationTest {
 		assertThat(applicationContext.getBeanNamesForType(RankingRebuildService.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(LimitOrderTriggerListener.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(ExitPlanTriggerListener.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(OrderRecoveryScanLock.class)).isEmpty();
+		assertThat(applicationContext.getBeanNamesForType(OrderRecoveryScanScheduler.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(LimitOrderFillExecutorConfig.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(LimitOrderFillExecutorRouter.class)).isEmpty();
 		assertThat(applicationContext.getBeanNamesForType(KisProperties.class)).isEmpty();
@@ -135,7 +139,8 @@ class ProdWebProfileContextIntegrationTest {
 		assertThat(registeredEventListenerMethods())
 			.doesNotContain(
 				"com.finplay.api.domain.order.listener.LimitOrderTriggerListener.onPriceUpdated",
-				"com.finplay.api.domain.order.listener.ExitPlanTriggerListener.onPriceUpdated");
+				"com.finplay.api.domain.order.listener.ExitPlanTriggerListener.onPriceUpdated",
+				"com.finplay.api.domain.order.service.OrderRecoveryScanScheduler.scanOnStartup");
 	}
 
 	private List<String> registeredScheduledMethodNames() {

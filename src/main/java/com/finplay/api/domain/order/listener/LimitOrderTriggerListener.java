@@ -9,6 +9,7 @@ import com.finplay.api.domain.order.entity.Order;
 import com.finplay.api.domain.order.repository.OrderRepository;
 import com.finplay.api.domain.order.service.LimitOrderFillExecutorRouter;
 import com.finplay.api.domain.order.service.LimitOrderFillService;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -49,15 +50,15 @@ public class LimitOrderTriggerListener {
 
 		List<Order> candidates = orderRepository.findPendingLimitOrdersToFill(instrumentId, event.price());
 		if (limitOrderFillExecutorProperties.enabled()) {
-			submitInBatches(instrumentId, candidates);
+			submitInBatches(instrumentId, candidates, event.price());
 		} else {
 			for (Order candidate : candidates) {
-				fillOneCandidate(candidate.getId());
+				fillOneCandidate(candidate.getId(), event.price());
 			}
 		}
 	}
 
-	private void submitInBatches(Long instrumentId, List<Order> candidates) {
+	private void submitInBatches(Long instrumentId, List<Order> candidates, BigDecimal currentPrice) {
 		int batchSize = limitOrderFillExecutorProperties.batchSize();
 		for (int start = 0; start < candidates.size(); start += batchSize) {
 			int end = Math.min(start + batchSize, candidates.size());
@@ -65,21 +66,21 @@ public class LimitOrderTriggerListener {
 			for (Order candidate : candidates.subList(start, end)) {
 				orderIds.add(candidate.getId());
 			}
-			limitOrderFillExecutorRouter.submit(instrumentId, () -> fillBatch(orderIds));
+			limitOrderFillExecutorRouter.submit(instrumentId, () -> fillBatch(orderIds, currentPrice));
 		}
 	}
 
-	private void fillOneCandidate(Long orderId) {
+	private void fillOneCandidate(Long orderId, BigDecimal currentPrice) {
 		try {
-			limitOrderFillService.fillIfPending(orderId);
+			limitOrderFillService.fillIfPending(orderId, currentPrice);
 		} catch (Exception e) {
 			log.error("지정가 주문 체결 처리 중 예외 발생. orderId={}", orderId, e);
 		}
 	}
 
-	private void fillBatch(List<Long> orderIds) {
+	private void fillBatch(List<Long> orderIds, BigDecimal currentPrice) {
 		try {
-			limitOrderFillService.fillBatch(orderIds);
+			limitOrderFillService.fillBatch(orderIds, currentPrice);
 		} catch (Exception e) {
 			log.error("지정가 주문 배치 체결 처리 중 예외 발생. orderIds={}", orderIds, e);
 		}

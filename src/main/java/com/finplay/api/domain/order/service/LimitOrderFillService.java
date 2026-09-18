@@ -49,18 +49,30 @@ public class LimitOrderFillService {
 
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void fillIfPending(Long orderId) {
-		fillOnePending(orderId, LocalDateTime.now(clock));
+		fillOnePending(orderId, LocalDateTime.now(clock), null);
 	}
 
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void fillIfPending(Long orderId, LocalDateTime pricedAt) {
-		fillOnePending(orderId, pricedAt);
+		fillOnePending(orderId, pricedAt, null);
+	}
+
+	@Transactional(isolation = Isolation.READ_COMMITTED)
+	public void fillIfPending(Long orderId, BigDecimal currentPrice) {
+		fillOnePending(orderId, LocalDateTime.now(clock), currentPrice);
 	}
 
 	@Transactional(isolation = Isolation.READ_COMMITTED)
 	public void fillBatch(List<Long> orderIds) {
-		LocalDateTime pricedAt = LocalDateTime.now(clock);
+		fillBatch(orderIds, LocalDateTime.now(clock), null);
+	}
 
+	@Transactional(isolation = Isolation.READ_COMMITTED)
+	public void fillBatch(List<Long> orderIds, BigDecimal currentPrice) {
+		fillBatch(orderIds, LocalDateTime.now(clock), currentPrice);
+	}
+
+	private void fillBatch(List<Long> orderIds, LocalDateTime pricedAt, BigDecimal currentPrice) {
 		List<Long> sortedOrderIds = orderIds.stream().sorted().toList();
 		Map<Long, Order> ordersById = orderRepository.findByIdInForUpdate(sortedOrderIds).stream()
 			.collect(Collectors.toMap(Order::getId, Function.identity()));
@@ -68,6 +80,7 @@ public class LimitOrderFillService {
 		List<Order> pendingOrders = orderIds.stream()
 			.map(ordersById::get)
 			.filter(order -> order != null && order.getStatus() == OrderStatus.PENDING)
+			.filter(order -> currentPrice == null || isTriggeredBySnapshot(order, currentPrice))
 			.toList();
 
 		Map<Long, Account> accountsById;
@@ -99,6 +112,9 @@ public class LimitOrderFillService {
 			if (order.getStatus() != OrderStatus.PENDING) {
 				continue;
 			}
+			if (currentPrice != null && !isTriggeredBySnapshot(order, currentPrice)) {
+				continue;
+			}
 			Account account = accountsById.get(order.getAccount().getId());
 			if (account == null) {
 				throw new IllegalStateException("체결 대상 계좌를 찾을 수 없습니다. accountId=" + order.getAccount().getId());
@@ -107,7 +123,7 @@ public class LimitOrderFillService {
 		}
 	}
 
-	private void fillOnePending(Long orderId, LocalDateTime pricedAt) {
+	private void fillOnePending(Long orderId, LocalDateTime pricedAt, BigDecimal currentPrice) {
 		Optional<PracticeOrderFillContextDto> practiceContext = orderRepository.findPracticeFillAttribution(orderId)
 			.map(attribution -> practiceOrderAttributionPort.lockForFill(attribution, pricedAt));
 		Order order = orderRepository.findByIdForUpdate(orderId)
@@ -117,6 +133,9 @@ public class LimitOrderFillService {
 		}
 		if (practiceContext.isPresent() && !practiceContext.get().currentRun()) {
 			throw new BusinessException(ErrorCode.PRACTICE_STEP_LOCKED);
+		}
+		if (currentPrice != null && !isTriggeredBySnapshot(order, currentPrice)) {
+			return;
 		}
 		BigDecimal limitPrice = order.getLimitPrice();
 		BigDecimal executionPrice = practiceContext
@@ -299,5 +318,12 @@ public class LimitOrderFillService {
 		return order.getSide() == OrderSide.BUY
 			? order.getLimitPrice().compareTo(canonicalPrice) >= 0
 			: order.getLimitPrice().compareTo(canonicalPrice) <= 0;
+	}
+
+	private boolean isTriggeredBySnapshot(Order order, BigDecimal currentPrice) {
+		if (order.getPracticePriceSessionId() != null || order.getPracticeAttemptId() != null) {
+			return true;
+		}
+		return isTriggered(order, currentPrice);
 	}
 }
