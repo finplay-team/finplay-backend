@@ -65,6 +65,107 @@ class StockMarketEventSubscriberTest {
 	}
 
 	@Test
+	void duplicatePriceEventIdIsForwardedOnlyOnce() throws Exception {
+		SseEmitterRegistry registry = new SseEmitterRegistry();
+		SseEmitter emitter = registry.register(Market.STOCK);
+		SseEmitterTestHandler handler = new SseEmitterTestHandler();
+		handler.attachTo(emitter);
+		String message = message(StockMarketTransportEvent.price("duplicate-price", priceEvent()));
+		StockMarketEventSubscriber subscriber = new StockMarketEventSubscriber(new ObjectMapper(), registry);
+
+		subscriber.onMessage(new DefaultMessage("channel".getBytes(), message.getBytes()), null);
+		subscriber.onMessage(new DefaultMessage("channel".getBytes(), message.getBytes()), null);
+
+		assertThat(sentText(handler).split("event:price", -1)).hasSize(2);
+	}
+
+	@Test
+	void olderPriceSourceTimeIsIgnoredPerSymbol() throws Exception {
+		SseEmitterRegistry registry = new SseEmitterRegistry();
+		SseEmitter emitter = registry.register(Market.STOCK);
+		SseEmitterTestHandler handler = new SseEmitterTestHandler();
+		handler.attachTo(emitter);
+		StockMarketEventSubscriber subscriber = new StockMarketEventSubscriber(new ObjectMapper(), registry);
+		MarketPriceEvent newer = priceEvent(LocalDateTime.of(2026, 8, 10, 9, 5), EMITTED_AT);
+		MarketPriceEvent older = priceEvent(SOURCE_TIME, EMITTED_AT.plusMinutes(5));
+
+		subscriber.onMessage(new DefaultMessage("channel".getBytes(), message(
+			StockMarketTransportEvent.price("newer-price", newer)).getBytes()), null);
+		subscriber.onMessage(new DefaultMessage("channel".getBytes(), message(
+			StockMarketTransportEvent.price("older-price", older)).getBytes()), null);
+
+		assertThat(sentText(handler).split("event:price", -1)).hasSize(2);
+	}
+
+	@Test
+	void samePriceSourceTimeWithDifferentEventIdIsIgnored() throws Exception {
+		SseEmitterRegistry registry = new SseEmitterRegistry();
+		SseEmitter emitter = registry.register(Market.STOCK);
+		SseEmitterTestHandler handler = new SseEmitterTestHandler();
+		handler.attachTo(emitter);
+		StockMarketEventSubscriber subscriber = new StockMarketEventSubscriber(new ObjectMapper(), registry);
+		MarketPriceEvent event = priceEvent();
+
+		subscriber.onMessage(new DefaultMessage("channel".getBytes(), message(
+			StockMarketTransportEvent.price("first-price", event)).getBytes()), null);
+		subscriber.onMessage(new DefaultMessage("channel".getBytes(), message(
+			StockMarketTransportEvent.price("second-price", event)).getBytes()), null);
+
+		assertThat(sentText(handler).split("event:price", -1)).hasSize(2);
+	}
+
+	@Test
+	void duplicateStatusEventIdIsForwardedOnlyOnce() throws Exception {
+		SseEmitterRegistry registry = new SseEmitterRegistry();
+		SseEmitter emitter = registry.register(Market.STOCK);
+		SseEmitterTestHandler handler = new SseEmitterTestHandler();
+		handler.attachTo(emitter);
+		MarketStatusEvent status = statusEvent(EMITTED_AT, StockMarketStatus.CLOSED);
+		String message = message(StockMarketTransportEvent.status("duplicate-status", status));
+		StockMarketEventSubscriber subscriber = new StockMarketEventSubscriber(new ObjectMapper(), registry);
+
+		subscriber.onMessage(new DefaultMessage("channel".getBytes(), message.getBytes()), null);
+		subscriber.onMessage(new DefaultMessage("channel".getBytes(), message.getBytes()), null);
+
+		assertThat(sentText(handler).split("event:status", -1)).hasSize(2);
+	}
+
+	@Test
+	void olderStatusEmittedAtIsIgnored() throws Exception {
+		SseEmitterRegistry registry = new SseEmitterRegistry();
+		SseEmitter emitter = registry.register(Market.STOCK);
+		SseEmitterTestHandler handler = new SseEmitterTestHandler();
+		handler.attachTo(emitter);
+		StockMarketEventSubscriber subscriber = new StockMarketEventSubscriber(new ObjectMapper(), registry);
+		MarketStatusEvent newer = statusEvent(EMITTED_AT.plusMinutes(5), StockMarketStatus.OPEN);
+		MarketStatusEvent older = statusEvent(EMITTED_AT, StockMarketStatus.CLOSED);
+
+		subscriber.onMessage(new DefaultMessage("channel".getBytes(), message(
+			StockMarketTransportEvent.status("newer-status", newer)).getBytes()), null);
+		subscriber.onMessage(new DefaultMessage("channel".getBytes(), message(
+			StockMarketTransportEvent.status("older-status", older)).getBytes()), null);
+
+		assertThat(sentText(handler).split("event:status", -1)).hasSize(2);
+	}
+
+	@Test
+	void sameStatusEmittedAtWithDifferentEventIdIsIgnored() throws Exception {
+		SseEmitterRegistry registry = new SseEmitterRegistry();
+		SseEmitter emitter = registry.register(Market.STOCK);
+		SseEmitterTestHandler handler = new SseEmitterTestHandler();
+		handler.attachTo(emitter);
+		StockMarketEventSubscriber subscriber = new StockMarketEventSubscriber(new ObjectMapper(), registry);
+		MarketStatusEvent event = statusEvent(EMITTED_AT, StockMarketStatus.CLOSED);
+
+		subscriber.onMessage(new DefaultMessage("channel".getBytes(), message(
+			StockMarketTransportEvent.status("first-status", event)).getBytes()), null);
+		subscriber.onMessage(new DefaultMessage("channel".getBytes(), message(
+			StockMarketTransportEvent.status("second-status", event)).getBytes()), null);
+
+		assertThat(sentText(handler).split("event:status", -1)).hasSize(2);
+	}
+
+	@Test
 	void malformedMessageIsIgnoredWithoutStoppingSubscriber() {
 		SseEmitterRegistry registry = new SseEmitterRegistry();
 
@@ -94,8 +195,16 @@ class StockMarketEventSubscriberTest {
 	}
 
 	private static MarketPriceEvent priceEvent() {
-		return new MarketPriceEvent(Market.STOCK, "TEST", new BigDecimal("71000"), SOURCE_TIME, EMITTED_AT,
+		return priceEvent(SOURCE_TIME, EMITTED_AT);
+	}
+
+	private static MarketPriceEvent priceEvent(LocalDateTime sourceTime, LocalDateTime emittedAt) {
+		return new MarketPriceEvent(Market.STOCK, "TEST", new BigDecimal("71000"), sourceTime, emittedAt,
 			TRADING_DATE, StockMarketStatus.OPEN);
+	}
+
+	private static MarketStatusEvent statusEvent(LocalDateTime emittedAt, StockMarketStatus marketStatus) {
+		return new MarketStatusEvent(Market.STOCK, null, marketStatus, null, null, emittedAt);
 	}
 
 	private static String message(StockMarketTransportEvent event) throws Exception {

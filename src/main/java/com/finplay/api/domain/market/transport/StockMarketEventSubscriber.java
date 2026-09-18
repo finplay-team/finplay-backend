@@ -6,6 +6,9 @@ import com.finplay.api.domain.market.dto.transport.StockMarketTransportEvent;
 import com.finplay.api.domain.market.entity.Market;
 import com.finplay.api.domain.market.sse.SseEmitterRegistry;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
@@ -22,9 +25,26 @@ import tools.jackson.databind.ObjectMapper;
 public class StockMarketEventSubscriber implements MessageListener {
 
 	private static final int SUPPORTED_VERSION = 1;
+	private static final int MAX_SEEN_EVENT_IDS = 4096;
+	private static final int MAX_TRACKED_SYMBOLS = 1024;
 
 	private final ObjectMapper objectMapper;
 	private final SseEmitterRegistry sseEmitterRegistry;
+	private final Object orderingMonitor = new Object();
+	private final Map<String, Boolean> seenEventIds = new LinkedHashMap<>(MAX_SEEN_EVENT_IDS, 0.75f, true) {
+		@Override
+		protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
+			return size() > MAX_SEEN_EVENT_IDS;
+		}
+	};
+	private final Map<String, LocalDateTime> latestPriceSourceTimes = new LinkedHashMap<>(MAX_TRACKED_SYMBOLS, 0.75f,
+		true) {
+		@Override
+		protected boolean removeEldestEntry(Map.Entry<String, LocalDateTime> eldest) {
+			return size() > MAX_TRACKED_SYMBOLS;
+		}
+	};
+	private LocalDateTime latestStatusEmittedAt;
 
 	@Override
 	public void onMessage(Message message, byte[] pattern) {
@@ -37,6 +57,9 @@ public class StockMarketEventSubscriber implements MessageListener {
 			if (!isSupported(event)) {
 				return;
 			}
+			if (!shouldForward(event)) {
+				return;
+			}
 			if (event.eventType() == StockMarketTransportEvent.EventType.PRICE) {
 				forwardPrice(event);
 				return;
@@ -46,6 +69,27 @@ public class StockMarketEventSubscriber implements MessageListener {
 			}
 		} catch (RuntimeException ex) {
 			log.warn("주식 시세 transport 수신 실패: type={}", ex.getClass().getSimpleName());
+		}
+	}
+
+	private boolean shouldForward(StockMarketTransportEvent event) {
+		synchronized (orderingMonitor) {
+			if (seenEventIds.putIfAbsent(event.eventId(), Boolean.TRUE) != null) {
+				return false;
+			}
+			if (event.eventType() == StockMarketTransportEvent.EventType.PRICE) {
+				LocalDateTime latestSourceTime = latestPriceSourceTimes.get(event.symbol());
+				if (latestSourceTime != null && !event.sourceTime().isAfter(latestSourceTime)) {
+					return false;
+				}
+				latestPriceSourceTimes.put(event.symbol(), event.sourceTime());
+				return true;
+			}
+			if (latestStatusEmittedAt != null && !event.emittedAt().isAfter(latestStatusEmittedAt)) {
+				return false;
+			}
+			latestStatusEmittedAt = event.emittedAt();
+			return true;
 		}
 	}
 
