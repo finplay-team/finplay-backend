@@ -2,6 +2,7 @@ package com.finplay.api.domain.market.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -13,6 +14,8 @@ import com.finplay.api.domain.market.entity.Instrument;
 import com.finplay.api.domain.market.entity.Market;
 import com.finplay.api.domain.market.repository.InstrumentRepository;
 import com.finplay.api.domain.market.sse.SseEmitterRegistry;
+import com.finplay.api.domain.market.transport.StockMarketEventPublisher;
+import com.finplay.api.domain.market.transport.StockMarketEventSubscriber;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -26,12 +29,16 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.data.redis.connection.DefaultMessage;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitterTestHandler;
+import tools.jackson.databind.ObjectMapper;
 
 class StockPriceStreamServiceTest {
 
@@ -242,6 +249,35 @@ class StockPriceStreamServiceTest {
 		service.publishScheduledUpdates();
 
 		assertThat(handler.getSentEvents()).hasSize(eventsAfterFirstChange);
+	}
+
+	@Test
+	void publishScheduledUpdatesForwardsNullableStatusThroughTransportToWebSse() throws Exception {
+		Instrument instrument = stockInstrument(1, "SYM1");
+		stubInstruments(List.of(instrument));
+		when(priceQueryService.getPriceQuote(instrument)).thenReturn(unavailableQuote());
+		when(stockPriceProvider.getMarketStatus()).thenReturn(StockMarketStatus.OPEN);
+		StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+		StockMarketEventPublisher publisher = new StockMarketEventPublisher(redisTemplate, new ObjectMapper());
+		StockPriceStreamService schedulerService = new StockPriceStreamService(
+			instrumentRepository, priceQueryService, stockPriceProvider, null, publisher, clock, transactionTemplate);
+		schedulerService.initializeBaseline();
+
+		SseEmitterRegistry webRegistry = new SseEmitterRegistry();
+		SseEmitter emitter = webRegistry.register(Market.STOCK);
+		SseEmitterTestHandler handler = new SseEmitterTestHandler();
+		handler.attachTo(emitter);
+		StockMarketEventSubscriber subscriber = new StockMarketEventSubscriber(new ObjectMapper(), webRegistry);
+
+		when(stockPriceProvider.getMarketStatus()).thenReturn(StockMarketStatus.CLOSED);
+		schedulerService.publishScheduledUpdates();
+
+		ArgumentCaptor<String> messageCaptor = ArgumentCaptor.forClass(String.class);
+		verify(redisTemplate).convertAndSend(eq(StockMarketEventPublisher.CHANNEL), messageCaptor.capture());
+		subscriber.onMessage(new DefaultMessage(StockMarketEventPublisher.CHANNEL.getBytes(),
+			messageCaptor.getValue().getBytes()), null);
+
+		assertThat(joinSentTextEvents(handler)).contains("event:status");
 	}
 
 	@Test

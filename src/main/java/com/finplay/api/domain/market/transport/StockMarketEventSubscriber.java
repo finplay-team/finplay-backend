@@ -60,7 +60,7 @@ public class StockMarketEventSubscriber implements MessageListener {
 				&& event.sourceTime() != null && event.sourceTradingDate() != null && event.marketStatus() != null;
 		}
 		return event.eventType() == StockMarketTransportEvent.EventType.STATUS
-			&& event.marketStatus() != null && event.status() != null;
+			&& event.marketStatus() != null;
 	}
 
 	private void forwardPrice(StockMarketTransportEvent event) {

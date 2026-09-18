@@ -6,7 +6,6 @@ import com.finplay.api.domain.market.dto.sse.MarketPriceEvent;
 import com.finplay.api.domain.market.dto.sse.MarketStatusEvent;
 import com.finplay.api.domain.market.dto.transport.StockMarketTransportEvent;
 import com.finplay.api.domain.market.entity.Market;
-import com.finplay.api.domain.market.service.PriceStatus;
 import com.finplay.api.domain.market.service.StockMarketStatus;
 import com.finplay.api.domain.market.sse.SseEmitterRegistry;
 import java.math.BigDecimal;
@@ -48,13 +47,13 @@ class StockMarketEventSubscriberTest {
 	}
 
 	@Test
-	void statusEventKeepsExistingSseEventNameWithoutAddingAnId() throws Exception {
+	void statusEventWithNullableStatusAndReasonKeepsExistingSseEventNameWithoutAddingAnId() throws Exception {
 		SseEmitterRegistry registry = new SseEmitterRegistry();
 		SseEmitter emitter = registry.register(Market.STOCK);
 		SseEmitterTestHandler handler = new SseEmitterTestHandler();
 		handler.attachTo(emitter);
 		MarketStatusEvent status = new MarketStatusEvent(Market.STOCK, null, StockMarketStatus.CLOSED,
-			PriceStatus.UNAVAILABLE, "market closed", EMITTED_AT);
+			null, null, EMITTED_AT);
 		String message = message(StockMarketTransportEvent.status("STOCK:STATUS:CLOSED:2026-08-10T09:01", status));
 
 		new StockMarketEventSubscriber(new ObjectMapper(), registry).onMessage(new DefaultMessage(

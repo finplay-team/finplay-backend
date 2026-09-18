@@ -55,3 +55,10 @@
 | 2026-09-18 11:08 | main | Web scheduling 테스트명과 Redis Pub/Sub 장애 정책 문서 보강 | Web heartbeat scheduling을 유지하는 실제 검증 내용에 맞게 테스트명을 정리하고, 발행 실패 시 실시간 SSE 이벤트 유실 가능성을 Spec에 명시했다 |
 | 11:08 | main | `./gradlew spotlessJavaCheck compileTestJava test --tests 'com.finplay.api.ProdWebProfileContextIntegrationTest' --no-daemon --max-workers=1` (외부 `AWS_REGION` 환경변수 설정) | Java 포맷·테스트 컴파일은 성공했으나 로컬 Docker 환경 부재(`/var/run/docker.sock`)로 Testcontainers Context 테스트 실행은 실패 |
 | 11:08 | main | `./gradlew spotlessJavaCheck compileTestJava test --tests 'com.finplay.api.domain.market.transport.StockMarketEventSubscriberTest' --no-daemon --max-workers=1` (외부 `AWS_REGION` 환경변수 설정) | transport subscriber 단위 테스트와 Java 포맷·테스트 컴파일 성공 |
+
+## PR 차단사항 수정 로그
+
+| 시각 | 에이전트 | 실행 명령 | 근거 |
+|---|---|---|---|
+| 2026-09-18 11:23 | main | STATUS subscriber 검증 완화 및 `StockPriceStreamService` transport-to-SSE 회귀 테스트 추가 | 기존 SSE 계약의 `status=null`, `reason=null` 상태 이벤트를 Web subscriber가 전달하도록 수정 |
+| 11:23 | main | `./gradlew spotlessJavaCheck compileTestJava test --tests 'com.finplay.api.domain.market.transport.StockMarketEventSubscriberTest' --tests 'com.finplay.api.domain.market.service.StockPriceStreamServiceTest' --no-daemon --max-workers=1` (외부 `AWS_REGION` 환경변수 설정) | 포맷·테스트 컴파일 및 차단사항 관련 테스트 성공 |
