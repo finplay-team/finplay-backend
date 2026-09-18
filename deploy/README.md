@@ -28,6 +28,21 @@
 프론트(별도 오리진) ──▶ S3 정적 웹 호스팅 (ADR-0022, finplay-frontend 레포에서 독립 배포)
 ```
 
+## Web / Scheduler 역할별 실행 기준
+
+`compose.deploy.yaml`은 실행 역할을 자동으로 선택하지 않는다. 각 EC2의 `.env`에는 역할에 맞는
+Profile과 health check 명령이 함께 주입되어야 한다. 운영 배포에서는 Terraform user-data와
+`refresh-env.sh`가 이 값을 역할별로 생성하며, 수동 폴백에서도 동일한 기준을 사용한다.
+
+| 실행 역할 | Profile | 컨테이너 health check | ALB 연결 |
+|---|---|---|---|
+| Web EC2 2대 | `prod,web` | Actuator `/actuator/health` HTTP 확인 | 연결 |
+| Scheduler EC2 1대 | `prod,scheduler` | Java 프로세스와 Scheduler readiness marker 확인 | 연결하지 않음 |
+
+Scheduler는 non-web 애플리케이션이므로 Web과 같은 Actuator HTTP health check를 사용하지 않는다.
+`SPRING_PROFILES_ACTIVE=prod`처럼 역할이 없는 값으로 실행하지 않으며, Web과 Scheduler는 반드시
+각자의 Profile을 사용한다.
+
 앱 컨테이너가 호스트 포트 8080을 직접 연다(ADR-0022 — nginx 제거). 프론트가 다른 오리진(S3)에서 오므로 백엔드가 CORS로 열어야 한다 — `.env`의 `CORS_ALLOWED_ORIGINS`가 그 허용 목록이다. 값이 비어 있으면 `CorsConfig`가 기동 단계에서 fail-fast로 거부한다.
 
 **DB·캐시는 이 스택 안에 없다 (ADR-0020, 이슈 #326).** 예전에는 `compose.deploy.yaml`이 mysql·redis 컨테이너를 함께 띄웠지만, EC2를 종료하면 그 볼륨의 원장이 함께 사라지는 문제 때문에 RDS·ElastiCache로 분리했다. 그래서 이 스택이 띄우는 컨테이너는 **app 하나뿐이고**, 접속 정보는 전부 `.env`에서 온다. 로컬 개발(`compose.yaml` + `bootRun`)은 바뀌지 않았다 — 여전히 컨테이너 mysql·redis를 쓴다.
@@ -58,9 +73,14 @@
 3. **확인한다.**
    ```bash
    docker compose -f compose.deploy.yaml ps
-   curl http://<호스트>:8080/actuator/health          # {"status":"UP"}
-   curl -N http://<호스트>:8080/api/stocks/stream     # SSE — 20초마다 heartbeat가 흘러야 한다
    ```
+   Web EC2에서는 다음 HTTP 확인을 추가한다.
+   ```bash
+   curl http://<호스트>:8080/actuator/health          # {"status":"UP"}
+   curl -N http://<호스트>:8080/api/stocks/stream     # SSE — heartbeat 확인
+   ```
+   Scheduler EC2에서는 HTTP Actuator/SSE를 확인하지 않고 `docker compose ps`의 컨테이너 health 상태와
+   Scheduler readiness 결과를 확인한다. Scheduler는 ALB 대상이 아니다.
    프론트(S3)에서 브라우저 개발자도구로 CORS 오류 없이 API 호출이 성공하는지, `/trade` 같은 하위 경로 새로고침이 404가 아닌지도 확인한다(SPA 폴백은 S3 오류 문서 설정이 담당하며 이 스택과 무관하다).
 
 ## 갱신

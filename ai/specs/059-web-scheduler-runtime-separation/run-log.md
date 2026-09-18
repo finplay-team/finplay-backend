@@ -48,6 +48,8 @@
 | 02:48 | main | S3 Region 설정 외부화 | Java 기본값을 제거하고 `application-prod.yml`의 `AWS_REGION` 주입 구조로 변경; 테스트 런타임에는 비밀이 아닌 테스트용 Region만 주입 |
 | 02:54 | main | `./gradlew test --no-daemon --max-workers=1` | 외부화 변경 반영 후 전체 테스트 성공; 기존 Redis shutdown warning만 확인 |
 | 02:55 | main | S3 Region 입력 경로 정리 | `build.gradle`의 Region 고정값을 제거하고 CI에서는 저장소 Variable `AWS_REGION`, 운영에서는 `.env`의 `AWS_REGION`을 사용하도록 변경 |
+| 15:36 | main | `rg`/`sed`로 Web·Scheduler 배포 문서, Compose health check, Terraform 실행 구조 재확인 | Web 2대·Scheduler 1대, 역할별 Profile, Web만 ALB 대상, Scheduler non-web health 기준을 확인 |
+| 15:36 | main | `apply_patch`로 `deploy/README.md`, `deploy/cd-runbook.md`, Stage 3 결과 문서 상태 보완 | 역할별 Profile/Health Check를 최신 기준으로 명시하고, `058` 역사 Spec은 수정하지 않는 별도 완료 기록을 남김 |
 
 ## 현재 분석 결과
 
@@ -64,3 +66,11 @@
 ## 완료 상태
 
 Connection Pool 선택, Stage 4·5 구현·검증 및 커밋을 완료했다. 리뷰 차단사항인 Scheduler readiness health check를 추가 구현하고 검증·커밋까지 완료했다.
+
+## 이번 확인 후 상태
+
+- Connection Pool 선택, Stage 4·5 구현·검증 및 관련 커밋을 완료했다.
+- Scheduler readiness health check와 시작 전 stale marker 정리도 구현·검증했다.
+- 배포 문서에는 현재 Web 2대·Scheduler 1대, 역할별 Profile, Web ALB health와 Scheduler non-web health 기준을 기록했다.
+- Stage 3의 `058` 역사 Spec은 수정하지 않고, 구현 완료 상태는 별도 결과 문서로 기록했다.
+- 실제 AWS 환경의 Terraform plan/apply와 운영 실측은 별도 작업으로 남아 있다.
