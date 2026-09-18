@@ -8,7 +8,10 @@
 | 19:51 | implementer | `./gradlew compileJava` | 리뷰 지적 반영: 종목별 PriceStore snapshot·예외 격리 |
 | 19:57 | implementer | `./gradlew compileJava` | Java 주석 금지 규칙에 따라 두 재검사 production 파일의 선두 주석 제거 후 컴파일 성공 |
 | 20:04 | implementer | `./gradlew compileJava` | tasks.md 2~3번: 지정가 snapshot 전달 및 order lock 후 가격 조건 재확인 |
+| 20:32 | main | `./gradlew test --tests 'com.finplay.api.domain.order.OrderRecoveryScanSchedulerIntegrationTest' --no-daemon` | MySQL/Redis Testcontainers 통합 테스트 7건 통과 |
+| 20:33 | main | `./gradlew spotlessApply --no-daemon` | 통합 테스트 프로필을 `prod,web`로 분리하고 테스트에서 재검사 경계를 직접 구성한 뒤 포맷 통과 |
 
 ## 모니터링 (사람용 요약)
 - 19:43 — `prod & scheduler` 전용 주문 재검사 진입점·Redis coordinator 락을 추가하고 포맷·컴파일을 통과했다.
 - 20:04 — 지정가 Listener와 FillService에 snapshot 전달·재확인을 연결하고 compileJava를 통과했다.
+- 20:32 — startup·정기 재검사, 시세 부재·stale·연결 해제·조건 불충족, 동시 실행 시나리오를 Testcontainers 통합 테스트로 검증했다.
