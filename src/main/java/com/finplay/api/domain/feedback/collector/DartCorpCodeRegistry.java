@@ -10,10 +10,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
+@Profile("!prod | (prod & scheduler)")
 public final class DartCorpCodeRegistry {
 
 	private static final String CORP_CODE_RESOURCE_PATH = "/dart-corp-codes.txt";

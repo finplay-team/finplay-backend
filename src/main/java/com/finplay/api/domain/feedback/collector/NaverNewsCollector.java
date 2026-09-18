@@ -28,7 +28,7 @@ import org.springframework.web.util.HtmlUtils;
 
 @Slf4j
 @Component
-@Profile({"prod", "news-real"})
+@Profile("(prod & scheduler) | (!prod & news-real)")
 public class NaverNewsCollector implements NewsCollector {
 
 	private static final String NAVER_API_HUB_BASE_URL = "https://naverapihub.apigw.ntruss.com";

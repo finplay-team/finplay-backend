@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
 
 @Component
-@Profile({"prod", "oauth-real"})
+@Profile("(prod & web) | (!prod & oauth-real)")
 public final class NaverOAuthAuthorizationProvider implements OAuthAuthorizationProvider {
 
 	private static final String AUTHORIZATION_ENDPOINT = "https://nid.naver.com/oauth2.0/authorize";

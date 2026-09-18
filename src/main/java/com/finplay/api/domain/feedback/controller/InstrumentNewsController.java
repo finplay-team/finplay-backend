@@ -3,6 +3,7 @@ package com.finplay.api.domain.feedback.controller;
 import com.finplay.api.domain.feedback.dto.response.InstrumentNewsResponse;
 import com.finplay.api.domain.feedback.service.InstrumentNewsQueryService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@Profile("!prod | web")
 @RequestMapping("/api/instruments")
 @RequiredArgsConstructor
 public class InstrumentNewsController {

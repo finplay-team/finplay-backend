@@ -25,11 +25,11 @@ class EmailSenderProfileTest {
 	}
 
 	@Test
-	@DisplayName("prod 프로필에서는 FakeEmailSender가 제외되어 로컬용 구현이 운영에 새어 나가지 않는다")
-	void prodProfileExcludesFakeEmailSender() {
+	@DisplayName("prod,web 프로필에서는 FakeEmailSender가 제외되어 로컬용 구현이 운영에 새어 나가지 않는다")
+	void prodWebProfileExcludesFakeEmailSender() {
 		contextRunner
 			.withPropertyValues("resend.api-key=test-key", "email.from=no-reply@finplay.com")
-			.withSystemProperties("spring.profiles.active=prod")
+			.withSystemProperties("spring.profiles.active=prod,web")
 			.run(context -> {
 				assertThat(context).hasNotFailed();
 				assertThat(context).doesNotHaveBean(FakeEmailSender.class);

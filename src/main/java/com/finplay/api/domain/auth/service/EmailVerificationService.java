@@ -19,10 +19,12 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Profile("!prod | web")
 public class EmailVerificationService {
 
 	private static final int SIGNUP_TOKEN_BYTES = 32;

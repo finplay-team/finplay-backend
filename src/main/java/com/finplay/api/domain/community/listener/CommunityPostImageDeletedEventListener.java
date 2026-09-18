@@ -4,11 +4,13 @@ import com.finplay.api.domain.community.event.CommunityPostImageDeletedEvent;
 import com.finplay.api.domain.community.storage.FileStorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 @Component
+@Profile("!prod | web")
 @RequiredArgsConstructor
 @Slf4j
 public class CommunityPostImageDeletedEventListener {

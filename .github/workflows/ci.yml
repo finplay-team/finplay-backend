@@ -86,4 +86,6 @@ jobs:
       # 시크릿 불필요 — @SpringBootTest용 더미 시크릿은 build.gradle의 Test 태스크가 직접 주입한다.
       - name: Gradle build (테스트·포맷검사·커버리지 포함)
         if: steps.filter.outputs.code == 'true'
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
         run: ./gradlew build

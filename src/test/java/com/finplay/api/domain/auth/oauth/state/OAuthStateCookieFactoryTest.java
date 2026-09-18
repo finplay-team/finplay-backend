@@ -118,8 +118,8 @@ class OAuthStateCookieFactoryTest {
 	}
 
 	@ParameterizedTest
-	@ValueSource(strings = {"prod", "oauth-real"})
-	@DisplayName("prod와 oauth-real 프로필에서 secure를 false로 설정하면 컨텍스트 기동에 실패한다")
+	@ValueSource(strings = {"prod,web", "oauth-real"})
+	@DisplayName("prod,web과 oauth-real 프로필에서 secure를 false로 설정하면 컨텍스트 기동에 실패한다")
 	void realOAuthProfileRejectsExplicitlyDisabledSecureAttribute(String profile) {
 		contextRunner
 			.withPropertyValues(

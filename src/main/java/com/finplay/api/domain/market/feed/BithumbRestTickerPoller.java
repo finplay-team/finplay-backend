@@ -27,7 +27,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 @Slf4j
 @Component
-@Profile("prod | crypto-real")
+@Profile("(prod & scheduler) | (!prod & crypto-real)")
 @ConditionalOnProperty(prefix = "bithumb.feed.ticker", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class BithumbRestTickerPoller {
 

@@ -29,10 +29,10 @@ class DisclosureCollectorProfileTest {
 	}
 
 	@Test
-	@DisplayName("prod 프로필에서는 DartDisclosureCollector가 실제로 조립되고 Fake가 제외된다")
+	@DisplayName("prod,scheduler 프로필에서는 DartDisclosureCollector가 실제로 조립되고 Fake가 제외된다")
 	void prodProfileAssemblesDartDisclosureCollector() {
 		contextRunner
-			.withSystemProperties("spring.profiles.active=prod")
+			.withSystemProperties("spring.profiles.active=prod,scheduler")
 			.run(context -> {
 				assertThat(context).hasNotFailed();
 				assertThat(context).hasSingleBean(DisclosureCollector.class);
@@ -43,10 +43,10 @@ class DisclosureCollectorProfileTest {
 	}
 
 	@Test
-	@DisplayName("prod 프로필에서도 공시 수집기가 RestClient 타입 빈을 새로 등록하지 않는다")
+	@DisplayName("prod,scheduler 프로필에서도 공시 수집기가 RestClient 타입 빈을 새로 등록하지 않는다")
 	void prodProfileAddsNoRestClientBean() {
 		contextRunner
-			.withSystemProperties("spring.profiles.active=prod")
+			.withSystemProperties("spring.profiles.active=prod,scheduler")
 			.run(context -> {
 				assertThat(context).hasNotFailed();
 				assertThat(context).doesNotHaveBean(RestClient.class);

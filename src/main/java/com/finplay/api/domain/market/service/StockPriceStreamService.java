@@ -8,6 +8,7 @@ import com.finplay.api.domain.market.entity.Instrument;
 import com.finplay.api.domain.market.entity.Market;
 import com.finplay.api.domain.market.repository.InstrumentRepository;
 import com.finplay.api.domain.market.sse.SseEmitterRegistry;
+import com.finplay.api.domain.market.transport.StockMarketEventPublisher;
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.time.Clock;
@@ -19,9 +20,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -29,7 +30,6 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class StockPriceStreamService {
 
 	private static final DateTimeFormatter EVENT_ID_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyyMMddHHmm");
@@ -38,11 +38,35 @@ public class StockPriceStreamService {
 	private final PriceQueryService priceQueryService;
 	private final StockPriceProvider stockPriceProvider;
 	private final SseEmitterRegistry sseEmitterRegistry;
+	private final StockMarketEventPublisher stockMarketEventPublisher;
 	private final Clock clock;
 	private final TransactionTemplate transactionTemplate;
 
 	private final Map<String, PriceQuoteDto> lastKnownQuotes = new ConcurrentHashMap<>();
 	private volatile StockMarketStatus lastKnownMarketStatus;
+
+	@Autowired
+	public StockPriceStreamService(InstrumentRepository instrumentRepository, PriceQueryService priceQueryService,
+		StockPriceProvider stockPriceProvider, @Nullable
+		SseEmitterRegistry sseEmitterRegistry,
+		@Nullable
+		StockMarketEventPublisher stockMarketEventPublisher, Clock clock,
+		TransactionTemplate transactionTemplate) {
+		this.instrumentRepository = instrumentRepository;
+		this.priceQueryService = priceQueryService;
+		this.stockPriceProvider = stockPriceProvider;
+		this.sseEmitterRegistry = sseEmitterRegistry;
+		this.stockMarketEventPublisher = stockMarketEventPublisher;
+		this.clock = clock;
+		this.transactionTemplate = transactionTemplate;
+	}
+
+	StockPriceStreamService(InstrumentRepository instrumentRepository, PriceQueryService priceQueryService,
+		StockPriceProvider stockPriceProvider, SseEmitterRegistry sseEmitterRegistry, Clock clock,
+		TransactionTemplate transactionTemplate) {
+		this(instrumentRepository, priceQueryService, stockPriceProvider, sseEmitterRegistry, null, clock,
+			transactionTemplate);
+	}
 
 	@PostConstruct
 	public void initializeBaseline() {
@@ -75,14 +99,13 @@ public class StockPriceStreamService {
 	}
 
 	public SseEmitter createEmitter() {
-		return sseEmitterRegistry.createEmitter(Market.STOCK);
+		return requireSseEmitterRegistry().createEmitter(Market.STOCK);
 	}
 
 	public void activate(SseEmitter emitter) {
-		sseEmitterRegistry.activate(Market.STOCK, emitter);
+		requireSseEmitterRegistry().activate(Market.STOCK, emitter);
 	}
 
-	@Scheduled(cron = "0 * * * * *", zone = "Asia/Seoul")
 	public void publishScheduledUpdates() {
 		ScheduledUpdate update = transactionTemplate.execute(status -> collectScheduledUpdate());
 		for (InstrumentPriceUpdate priceUpdate : update.priceUpdates()) {
@@ -129,16 +152,29 @@ public class StockPriceStreamService {
 		MarketPriceEvent payload = new MarketPriceEvent(Market.STOCK, symbol, quote.price(), quote.sourceTime(),
 			LocalDateTime.now(clock), quote.sourceTradingDate(), marketStatus);
 		String eventId = "STOCK:%s:%s".formatted(symbol, quote.sourceTime().format(EVENT_ID_TIME_FORMAT));
-		for (SseEmitter emitter : sseEmitterRegistry.getEmitters(Market.STOCK)) {
-			send(emitter, SseEmitter.event().name("price").id(eventId).data(payload));
+		if (stockMarketEventPublisher != null) {
+			stockMarketEventPublisher.publishPrice(eventId, payload);
+			return;
+		}
+		if (sseEmitterRegistry != null) {
+			for (SseEmitter emitter : sseEmitterRegistry.getEmitters(Market.STOCK)) {
+				send(emitter, SseEmitter.event().name("price").id(eventId).data(payload));
+			}
 		}
 	}
 
 	private void broadcastStatusEvent(StockMarketStatus marketStatus) {
 		MarketStatusEvent payload = new MarketStatusEvent(Market.STOCK, null, marketStatus, null, null,
 			LocalDateTime.now(clock));
-		for (SseEmitter emitter : sseEmitterRegistry.getEmitters(Market.STOCK)) {
-			send(emitter, SseEmitter.event().name("status").data(payload));
+		String eventId = "STOCK:STATUS:%s:%s".formatted(marketStatus, payload.emittedAt());
+		if (stockMarketEventPublisher != null) {
+			stockMarketEventPublisher.publishStatus(eventId, payload);
+			return;
+		}
+		if (sseEmitterRegistry != null) {
+			for (SseEmitter emitter : sseEmitterRegistry.getEmitters(Market.STOCK)) {
+				send(emitter, SseEmitter.event().name("status").data(payload));
+			}
 		}
 	}
 
@@ -153,5 +189,12 @@ public class StockPriceStreamService {
 			log.debug("SSE 이벤트 전송 실패로 emitter 종료", e);
 			emitter.completeWithError(e);
 		}
+	}
+
+	private SseEmitterRegistry requireSseEmitterRegistry() {
+		if (sseEmitterRegistry == null) {
+			throw new IllegalStateException("SSE emitter registry가 활성화되지 않았습니다.");
+		}
+		return sseEmitterRegistry;
 	}
 }

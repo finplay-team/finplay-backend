@@ -20,7 +20,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 @Component
-@Profile({"prod", "oauth-real"})
+@Profile("(prod & web) | (!prod & oauth-real)")
 public final class KakaoOAuthCallbackProvider implements OAuthCallbackProvider {
 
 	private static final String TOKEN_ENDPOINT = "https://kauth.kakao.com/oauth/token";

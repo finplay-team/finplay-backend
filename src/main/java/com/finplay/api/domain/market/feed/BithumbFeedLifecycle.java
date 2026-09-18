@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
-@Profile("prod")
+@Profile("prod & scheduler")
 public class BithumbFeedLifecycle {
 
 	private final BithumbFeedClient bithumbFeedClient;

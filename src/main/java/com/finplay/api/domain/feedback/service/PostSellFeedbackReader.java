@@ -5,9 +5,11 @@ import com.finplay.api.domain.market.entity.Market;
 import com.finplay.api.domain.order.entity.Trade;
 import com.finplay.api.domain.portfolio.service.SellAllocationSummaryDto;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Component
+@Profile("!prod | web")
 @RequiredArgsConstructor
 class PostSellFeedbackReader {
 

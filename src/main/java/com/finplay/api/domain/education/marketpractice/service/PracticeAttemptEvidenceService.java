@@ -12,10 +12,12 @@ import com.finplay.api.domain.portfolio.service.HoldingService;
 import com.finplay.api.global.exception.BusinessException;
 import com.finplay.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Profile("!prod | web")
 @RequiredArgsConstructor
 public class PracticeAttemptEvidenceService {
 

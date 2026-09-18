@@ -5,6 +5,7 @@ import com.finplay.api.domain.education.marketpractice.dto.response.PracticeAtte
 import com.finplay.api.domain.education.marketpractice.service.PracticeAttemptScriptAdvanceService;
 import com.finplay.api.domain.market.entity.Market;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@Profile("!prod | web")
 @RequestMapping("/api/education/practice/attempts")
 @RequiredArgsConstructor
 public class PracticeAttemptScriptAdvanceController {

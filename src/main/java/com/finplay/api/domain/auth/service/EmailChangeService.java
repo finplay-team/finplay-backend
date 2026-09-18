@@ -19,12 +19,14 @@ import java.time.LocalDateTime;
 import java.util.HexFormat;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 @Service
+@Profile("!prod | web")
 public class EmailChangeService {
 
 	private final UserRepository userRepository;

@@ -8,12 +8,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Slf4j
 @Component
+@Profile("!prod | web")
 public class SseEmitterRegistry {
 
 	private static final long RETRY_MILLIS = 3000L;
@@ -56,6 +58,12 @@ public class SseEmitterRegistry {
 		return Collections.unmodifiableList(emittersByMarket.get(market));
 	}
 
+	public void broadcast(Market market, SseEmitter.SseEventBuilder eventBuilder) {
+		for (SseEmitter emitter : getEmitters(market)) {
+			send(emitter, eventBuilder, emittersByMarket.get(market));
+		}
+	}
+
 	@Scheduled(fixedRate = HEARTBEAT_INTERVAL_MILLIS)
 	public void sendHeartbeat() {
 		for (Map.Entry<Market, CopyOnWriteArrayList<SseEmitter>> entry : emittersByMarket.entrySet()) {
@@ -65,8 +73,7 @@ public class SseEmitterRegistry {
 					emitter.send(SseEmitter.event().comment(HEARTBEAT_COMMENT));
 				} catch (IOException | RuntimeException e) {
 					log.debug("heartbeat 전송 실패로 emitter 정리: market={}", entry.getKey(), e);
-					emitters.remove(emitter);
-					emitter.completeWithError(e);
+					removeAndComplete(emitter, emitters, e);
 				}
 			}
 		}
@@ -77,8 +84,26 @@ public class SseEmitterRegistry {
 			emitter.send(SseEmitter.event().reconnectTime(RETRY_MILLIS));
 		} catch (IOException | RuntimeException e) {
 			log.debug("retry 힌트 전송 실패로 emitter 정리", e);
-			emitters.remove(emitter);
-			emitter.completeWithError(e);
+			removeAndComplete(emitter, emitters, e);
+		}
+	}
+
+	private void send(SseEmitter emitter, SseEmitter.SseEventBuilder eventBuilder,
+		List<SseEmitter> emitters) {
+		try {
+			emitter.send(eventBuilder);
+		} catch (IOException | RuntimeException e) {
+			log.debug("SSE 이벤트 전송 실패로 emitter 종료", e);
+			removeAndComplete(emitter, emitters, e);
+		}
+	}
+
+	private void removeAndComplete(SseEmitter emitter, List<SseEmitter> emitters, Throwable cause) {
+		emitters.remove(emitter);
+		try {
+			emitter.completeWithError(cause);
+		} catch (RuntimeException completionFailure) {
+			log.debug("emitter 종료 실패", completionFailure);
 		}
 	}
 }

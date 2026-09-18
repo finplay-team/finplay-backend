@@ -20,7 +20,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 @Component
-@Profile({"prod", "oauth-real"})
+@Profile("(prod & web) | (!prod & oauth-real)")
 public final class NaverOAuthCallbackProvider implements OAuthCallbackProvider {
 
 	private static final String TOKEN_ENDPOINT = "https://nid.naver.com/oauth2.0/token";

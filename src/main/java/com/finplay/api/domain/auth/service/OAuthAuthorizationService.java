@@ -10,9 +10,11 @@ import com.finplay.api.global.exception.ErrorCode;
 import java.net.URI;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 @Service
+@Profile("!prod | web")
 @RequiredArgsConstructor
 public class OAuthAuthorizationService {
 

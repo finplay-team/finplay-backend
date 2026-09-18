@@ -6,11 +6,13 @@ import com.finplay.api.domain.market.entity.Market;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
+@Profile("!prod | web")
 @RequiredArgsConstructor
 public class PracticeAttemptDeadlockRetryService {
 

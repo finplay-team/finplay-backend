@@ -7,12 +7,14 @@ import java.util.Base64;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 @Slf4j
 @Component
+@Profile("!prod | web")
 @RequiredArgsConstructor
 public class OAuthLoginExchangeStore {
 

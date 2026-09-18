@@ -4,9 +4,11 @@ import com.finplay.api.domain.market.entity.Instrument;
 import com.finplay.api.domain.market.entity.Market;
 import java.util.ArrayList;
 import java.util.List;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Component
+@Profile("!prod | (prod & scheduler)")
 public class NewsTitleFilter {
 
 	public boolean isRelevant(Instrument instrument, List<String> sameMarketNames, String title) {

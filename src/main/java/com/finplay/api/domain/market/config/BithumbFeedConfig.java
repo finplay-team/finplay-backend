@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 
 @Configuration(proxyBeanMethods = false)
-@Profile("prod")
+@Profile("prod & scheduler")
 public class BithumbFeedConfig {
 
 	@Bean

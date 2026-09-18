@@ -21,7 +21,7 @@ import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
-@Profile("prod")
+@Profile("prod & web")
 @Slf4j
 @Service
 @RequiredArgsConstructor

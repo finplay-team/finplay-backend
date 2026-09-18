@@ -20,6 +20,7 @@ import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -30,6 +31,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@Profile("!prod | (prod & scheduler)")
 public class KisDailyCandleClientImpl implements KisDailyCandleClient {
 
 	private static final String TR_ID_DAILY_CHART = "FHKST03010100";

@@ -6,6 +6,7 @@ import com.finplay.api.domain.portfolio.dto.response.HoldingListItemResponse;
 import com.finplay.api.domain.portfolio.service.HoldingService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@Profile("!prod | web")
 @RequestMapping("/api/holdings")
 @RequiredArgsConstructor
 public class HoldingController {

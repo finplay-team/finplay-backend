@@ -59,8 +59,8 @@ class OAuthProviderProfileTest {
 	}
 
 	@ParameterizedTest
-	@ValueSource(strings = {"prod", "oauth-real"})
-	@DisplayName("prod와 oauth-real 프로필에서는 실제 카카오와 네이버 공급자만 활성화된다")
+	@ValueSource(strings = {"prod,web", "oauth-real"})
+	@DisplayName("prod,web과 oauth-real 프로필에서는 실제 카카오와 네이버 공급자만 활성화된다")
 	void realOAuthProfileWiresOnlyKakaoAndNaverProviders(String profile) {
 		contextRunner
 			.withPropertyValues(

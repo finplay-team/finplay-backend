@@ -13,6 +13,23 @@
 >
 > 결정의 근거·대안은 ADR-0021이 정본이다. 배포 아키텍처(EC2 + RDS·ElastiCache·S3 + 블루-그린) 자체는 [ADR-0020](../ai/adr/0020-managed-service-deployment.md)이 정본이다. **수동 배포 절차는 폐기하지 않는다** — 파이프라인이 막혔을 때의 폴백으로 [`README.md`](README.md)에 남아 있다.
 
+## 현재 실행 기준 — Issue #589 Web / Scheduler 분리
+
+위의 블루-그린 절차와 단일 EC2 변수명은 역사적 참고용이다. 현재 실행 기준은 다음과 같다.
+
+| 역할 | 인스턴스 수 | Spring Profile | 배포 방식 | Health Check | ALB |
+|---|---:|---|---|---|---|
+| Web | 2대 | `prod,web` | SSM 기반 한 대씩 롤링 | Actuator HTTP | 대상 |
+| Scheduler | 1대 | `prod,scheduler` | SSM 기반 단일 인스턴스 배포 | Java 프로세스 + readiness marker | 대상 아님 |
+
+현재 Workflow는 Web 인스턴스를 순차 교체하고 Scheduler를 별도 대상으로 배포한다. Scheduler는
+non-web 프로세스이므로 Web의 Actuator/ALB health check를 복사하지 않는다. 역할별 Profile과
+health command는 Terraform이 생성하는 인스턴스별 `.env`에 주입되며, 저장소에는 운영 비밀값을
+기록하지 않는다.
+
+현재 인프라를 새로 구성하거나 변경할 때는 `infra/terraform/`과 ADR-0030을 정본으로 사용한다.
+아래의 블루-그린 관련 절차와 과거 콘솔 설정은 변경 이력 및 장애 대응 참고로만 사용한다.
+
 ## 이 파이프라인이 하는 일
 
 ```
