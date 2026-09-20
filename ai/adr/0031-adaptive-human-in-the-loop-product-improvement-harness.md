@@ -200,6 +200,10 @@ source_results:
   - source_id: repo-docs
     status: SUCCESS | FAILED
     current_digest: sha256:...
+    source_delta_id: repo-docs:sha256:...
+    last_processed_delta_id: repo-docs:sha256:...
+    last_processed_receipt_id: receipt-...
+    last_successful_fetch_at: 2026-09-14T00:00:00Z
 processable_delta_count: 0
 failed_sources: []
 last_successful_scan_at: 2026-09-14T00:00:00Z
@@ -207,11 +211,12 @@ quota_available: true
 dispatch_status: READY | NO_ACTIONABLE_DELTA | DEFERRED_QUOTA | NOT_EVALUATED
 ```
 
-- checkpoint 정본은 Issue 댓글이 아니라 가장 최근 `SUCCESS` scan의 GitHub Actions artifact다. artifact가 만료되거나 없으면 baseline만 다시 만들고 외부 본문 전체를 새 변화로 간주하지 않는다.
+- checkpoint 정본은 Issue 댓글이 아니라 가장 최근 scan의 GitHub Actions artifact다. 전체 scan이 `SUCCESS`이면 전체 receipt를, `PARTIAL`이면 성공한 source의 `source_delta_id`·`last_processed_delta_id`를 source별 checkpoint로 기록한다. 실패 source는 직전의 성공 checkpoint를 유지한다. artifact가 만료되거나 없으면 baseline만 다시 만들고 외부 본문 전체를 새 변화로 간주하지 않는다.
 - digest는 timestamp, 응답 순서, tracking query처럼 의미 없는 volatile 필드를 제거하고 stable source ID·version·정규화 URL·추출 payload hash를 정렬해 계산한다.
 - LLM job 실행 조건은 `scan_status in [SUCCESS, PARTIAL] && processable_delta_count > 0 && quota_available`다. `PARTIAL`이어도 성공한 source의 독립적인 delta는 처리하며, 실패 source가 해당 판단에 필수인 후보만 `NEEDS_EVIDENCE`로 둔다. 긴급 security delta는 다른 source 실패와 독립적으로 알릴 수 있어야 한다.
+- source delta의 멱등 키는 `source_id:source_delta_id`다. receipt에 `last_processed_delta_id`가 같거나 `PROCESSING`·`PROCESSED` 상태의 동일 키가 있으면 LLM dispatch와 candidate 생성을 다시 만들지 않고 기존 receipt·candidate·run ID를 반환한다. `FAILED_RETRYABLE`만 attempt 예산 안에서 재시도하며, 성공 source의 checkpoint는 전체 scan이 `SUCCESS`가 아니어도 먼저 저장한다. 따라서 한 source가 계속 실패해도 다른 source의 같은 delta가 매번 다시 처리되지 않는다.
 - quota 초과는 scanner 실패가 아니라 `DEFERRED_QUOTA`로 기록한다. `FAILED`는 수집 실패, `NO_ACTIONABLE_DELTA`는 성공했지만 처리할 변화가 없음, `DEFERRED_QUOTA`는 처리할 변화가 있으나 예산 때문에 연기됨을 뜻한다.
-- scanner job에는 LLM credential을 주지 않고 GitHub 권한은 `contents: read`, `issues: none`, `pull-requests: none`으로 제한한다. runner의 임시 workspace·`RUNNER_TEMP`·Actions summary·artifact 쓰기는 허용하지만 repository contents와 승인 상태는 쓰지 못한다. `NO_ACTIONABLE_DELTA`는 Actions summary와 artifact에만 남기며 승인 원장 입력으로 복제하지 않는다.
+- scanner job에는 LLM credential을 주지 않는다. source를 실제로 읽는 최소 권한은 source 계약에 함께 선언한다: 저장소 파일은 `contents: read`, Actions run은 `actions: read`, check 결과는 `checks: read`, code-scanning/security 결과는 `security-events: read`를 사용한다. Dependabot·dependency advisory API가 요구하는 설치 권한은 workflow permission 이름으로 추측하지 않고 GitHub App/토큰의 별도 read 권한으로 명시한다. scanner는 `issues: none`, `pull-requests: none`으로 유지하고, Issue·PR을 읽는 Triage job만 `issues: read`, `pull-requests: read`를 별도로 가진다. runner의 임시 workspace·`RUNNER_TEMP`·Actions summary·artifact 쓰기는 허용하지만 repository contents와 승인 상태는 쓰지 못한다. `NO_ACTIONABLE_DELTA`는 Actions summary와 artifact에만 남기며 승인 원장 입력으로 복제하지 않는다.
 - `PARTIAL`·`FAILED`는 `NO_ACTIONABLE_DELTA`와 구분한다. read-only source 재시도는 1회, 같은 source의 3회 연속 실패 뒤에만 운영 알림을 한 번 보내고 last successful fetch와 실패 source를 표시한다.
 
 두 번째 일일 실행은 기본값으로 두지 않는다. 첫 pilot에서 하루 한 번으로도 신호가 늦게 발견됐다는 근거가 있을 때만, 전체 LLM 분석이 아니라 결정적 변화 탐지 한 번을 추가하는 선택지를 검토한다. 한 주에 후보가 5개를 넘으면 점수가 높은 신규 후보 5개만 사람에게 보여주고 나머지는 다음 digest로 이월한다.
@@ -393,10 +398,10 @@ Standard의 수정 1회가 실행되면 대상 테스트, 최종 Quality Gate, �
 | Fast·사람 직접 요청 | 현재 메인 세션 외 추가 역할 0 | 0 | 0 | 0. 현재 요청을 승인으로 사용 |
 | Fast·자동 발견 | 방향 제시 1 + 문서 실행 1 이하 | 0 | 0 | 실행 승인 1 |
 | Standard | planner 0~1 + implementer 1 + tester 0~1 + reviewer 1, 합계 2~4 | 최종 revision당 1 | 1 | 직접 요청이면 0, 자동 발견이면 1 |
-| Standard 자동 수정 1회 포함 | 최초 예산 + implementer 재개 1 + tester 0~1 + reviewer 1, 누적 최대 6 | 수정 후 revision 1회 추가 | 재리뷰 1 | scope가 같으면 0 |
+| Standard 자동 수정 1회 포함 | 최초 예산 + implementer 재개 1 + tester 0~1 + reviewer 1, 누적 최대 7 | 수정 후 revision 1회 추가 | 재리뷰 1 | scope가 같으면 0 |
 | Strict | MVP는 planner 1 + reviewer 1 + Security 1 + QA 0~1, 합계 3~4. Q3에서 B를 선택할 때만 implementer·tester 각 0~1 추가 | 승인된 계획에 명시 | 최소 1 | Issue 등록, 실행, 파괴적 명령별 승인 |
 
-Docs 게이트와 Evidence aggregation은 MVP에서 결정적 workflow step이므로 LLM 호출 수에 포함하지 않는다. 예산을 넘겨야 하면 자동으로 역할을 더 만들지 않고 `NEEDS_HUMAN`에서 초과 이유와 예상 효과를 제시한다.
+Docs 게이트와 Evidence aggregation은 MVP에서 결정적 workflow step이므로 LLM 호출 수에 포함하지 않는다. Standard 자동 수정 경로의 호출 상한은 위 표의 **7회**로 고정한다. `repair_round=1`을 이미 사용했거나 7회에 도달하면 자동으로 역할을 더 만들지 않고 `NEEDS_HUMAN`에서 초과 이유와 예상 효과를 제시한다. 이 숫자는 `agent.yml` fixture·정책 테스트·화이트박스 출력의 `max_role_calls`와 같은 상수로 검증하며, 문서에 다른 상한을 중복 선언하지 않는다.
 
 ### 10.4 Task Coordinator 계약
 
@@ -472,6 +477,20 @@ READY_FOR_HUMAN_REVIEW
   └─ 종료 → CLOSED_WITHOUT_MERGE
 ```
 
+### 11.1.1 상태별 실패·재시도·복구 매트릭스
+
+§12의 일반 실패 분류를 상태별로 다음처럼 고정한다. 재시도는 같은 `candidate_id:proposal_revision`을 유지하고, 새 승인이나 새 범위가 필요하면 `proposal_revision`을 먼저 증가시킨다.
+
+| 현재 상태 | 실패 상황 | 자동 처리 | 재시도 상한·backoff | 상한 초과/수동 조치 |
+| --- | --- | --- | --- | --- |
+| `ISSUE_REGISTRATION_APPROVED` | GitHub Issue 생성 API 일시 오류 | `ISSUE_REGISTERED`로 전이하지 않고 동일 idempotency key로 재시도 | 1회, 30초 backoff | `NEEDS_HUMAN`; Issue 번호를 확인한 뒤 수동 reconcile |
+| `ISSUE_REGISTERED` | Issue 번호·canonical state comment 기록 실패 | Issue 존재 여부와 fingerprint를 조회해 이미 등록됐으면 번호를 채택 | 조회 1회 후 1회 재시도 | 중복 Issue를 만들지 않고 `NEEDS_HUMAN` |
+| `DISPATCH_PENDING` | dispatcher 중단 또는 workflow run ID 미기록 | `execution_id`를 workflow input·run 목록에서 조회하고 발견한 기존 run을 채택 | lease 만료 전 재조회; 만료 후에도 새 execution은 금지 | `NEEDS_HUMAN`; 기존 run 확인 후 수동 reconcile |
+| `AWAITING_APPROVAL`, `AWAITING_EXECUTION_APPROVAL` | Slack·Discord adapter 전송/응답 오류 | canonical 원장은 변경하지 않고 adapter만 재전송 | 1회, 30초 backoff | 승인 상태를 바꾸지 않고 `NEEDS_HUMAN` |
+| `EXECUTING`, `QUALITY_GATE` | workflow job 실패 | 실패 분류가 `RETRYABLE_FAILURE`일 때만 같은 execution의 attempt 증가 | 환경 오류 1회 | 소진 시 `FAILED` 또는 `TIMED_OUT` → `NEEDS_HUMAN` |
+
+`ISSUE_REGISTERED`와 `DISPATCH_PENDING`에서 “성공했을 수도 있는 요청”을 새로 발행하지 않는 것이 핵심 invariant다. 복구 작업은 먼저 조회하고, 기존 결과를 찾지 못했다는 근거가 있을 때만 같은 실행 키로 한 번 재시도한다.
+
 ### 11.2 Slack·Discord 메시지 계약
 
 Slack 버튼과 Discord component는 같은 canonical action을 전송한다. 채널 메시지는 상태 원장이 아니라 표시·입력 어댑터다.
@@ -499,7 +518,18 @@ Slack 버튼과 Discord component는 같은 canonical action을 전송한다. �
 
 ### 11.4 승인자 권한
 
-- GitHub collaborator 또는 팀 membership을 canonical 권한으로 사용한다. 현재 `agent.yml`의 댓글 작성자·Issue 작성자 collaborator 검사를 유지한다.
+- GitHub collaborator 또는 팀 membership은 **승인 후보인지 확인하는 자격**일 뿐 `APPROVE_EXECUTION` 권한 그 자체가 아니다. 별도의 `approver` allowlist/team을 두고, canonical 원장의 `APPROVE_EXECUTION`은 그 목록에 속한 사용자만 처리한다. 저장소 collaborator라도 approver가 아니면 승인할 수 없다.
+- 권한을 다음 네 층으로 분리한다.
+
+| 주체 | Issue·PR 읽기 | Issue 등록 | `APPROVE_EXECUTION` | workflow dispatch |
+| --- | --- | --- | --- | --- |
+| 일반 collaborator/team member | 허용 범위 내 | 정책이 허용한 경우만 | 금지 | 금지 |
+| `approver` allowlist/team | 허용 | 정책이 허용한 경우 | 허용 | 직접 dispatch 금지 |
+| dispatcher workflow bot | 필요한 읽기와 상태 comment 쓰기 | 위임된 등록만 | 금지 | 승인 원장 확인 후에만 허용 |
+| `reviewer` agent | 읽기·검증 | 금지 | 금지 | 금지 |
+
+- `workflow_dispatch`를 호출할 수 있는 GitHub Actions 권한은 사람의 `APPROVE_EXECUTION` 권한과 별개다. workflow token이 dispatch할 수 있어도 승인 이벤트가 없으면 실행하지 않는다.
+- 현재 `agent.yml`의 댓글 작성자·Issue 작성자 collaborator 검사를 유지하되, 승인 처리 시에는 collaborator/team membership과 `approver` allowlist를 모두 다시 확인한다.
 - Slack·Discord 사용자는 사전에 연결된 GitHub 사용자로 매핑하고, 결정 처리 시마다 현재 collaborator 권한을 다시 확인한다. 캐시만으로 승인하지 않는다.
 - 연결 해제, 팀 탈퇴, 권한 회수는 다음 결정부터 즉시 반영한다. 채널 표시 이름만으로 사용자를 식별하지 않는다.
 - Fast·Standard에서 권한 있는 사람이 직접 요청한 작업은 같은 사람의 실행 의도로 인정할 수 있다.
@@ -518,6 +548,18 @@ Slack 버튼과 Discord component는 같은 canonical action을 전송한다. �
 - dispatcher가 상태 기록 뒤 실행 전에 중단되면 같은 `execution_id`로만 재개한다. 새 execution을 만들지 않는다.
 - job 취소·timeout으로 lease가 만료되면 필수 `workflow_run` finalizer가 GitHub run conclusion을 확인해 `TIMED_OUT` 또는 `NEEDS_HUMAN`으로 정리한다. 수동 reconcile은 finalizer 자체가 실패했을 때의 복구 수단이다.
 - 외부 쓰기 명령은 provider가 지원하는 idempotency key를 `execution_id`에서 파생할 수 있을 때만 재시도한다. 지원하지 않으면 자동 재시도하지 않는다.
+
+#### 11.5.1 중단 후 재시작의 단일 dispatch 절차
+
+GitHub의 “workflow dispatch 요청”과 “workflow run ID 기록”은 하나의 원자적 API가 아니므로, 둘 사이에서 프로세스가 멈출 수 있음을 전제로 한다. 다음 순서를 H-04 fixture와 workflow 테스트의 정본으로 사용한다.
+
+1. dispatcher가 `candidate_id:proposal_revision`을 읽고, canonical event의 expected version을 compare-and-set으로 `DISPATCH_PENDING`에 기록한다. 이때 `execution_id`, `dispatch_nonce`, lease 만료 시각을 함께 기록한다.
+2. dispatch 전에 `execution_id`를 workflow input으로 가진 기존 run을 조회한다. `QUEUED`, `IN_PROGRESS`, `COMPLETED` run이 있으면 새 dispatch를 하지 않고 해당 run을 기존 실행으로 채택한다.
+3. 기존 run이 없을 때만 `workflow_dispatch`를 한 번 호출한다. 호출 성공 응답에 run ID가 없어도 실패로 간주해 즉시 재호출하지 않는다.
+4. dispatcher가 중단되면 재시작된 dispatcher 또는 reconcile job이 같은 `execution_id`로 run 목록을 다시 조회해, 발견한 run ID를 canonical event에 CAS로 기록한다. 이 단계가 끝나기 전에는 새 `execution_id`나 새 dispatch를 만들지 않는다.
+5. 조회 grace period가 지나도 run이 없고 lease가 만료된 경우에만 `DISPATCH_PENDING`을 `NEEDS_HUMAN`으로 넘긴다. 자동으로 같은 workflow를 다시 dispatch하지 않으며, 사람은 기존 run 부재를 확인한 뒤 재승인 또는 새 `proposal_revision`을 만든다.
+
+따라서 `workflow_run_id` 기록이 dispatch와 동시에 되지 않아도 `execution_id`가 중복 실행 방지의 기준이 된다. H-04에는 `dispatch 직후 중단`, `run ID 기록 직전 중단`, `재시작 후 기존 run 채택`, `기존 run이 없을 때의 수동 인계` 네 경우를 반드시 넣는다.
 
 ## 12. 재시도·실패·타임아웃
 
