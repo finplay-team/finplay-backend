@@ -27,13 +27,16 @@ FORBIDDEN_EXACT = {
 }
 FORBIDDEN_PREFIXES = (".agents/", ".claude/", ".codex/", ".github/workflows/")
 INLINE_LINK_PATTERN = re.compile(r"(?<!!)(?:\[[^\]]*\])\(([^)\r\n]+)\)")
+IMAGE_LINK_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)\r\n]+)\)")
 REFERENCE_LINK_PATTERN = re.compile(r"(?<!!)(?:\[([^\]]+)\])\[([^\]]*)\]")
+IMAGE_REFERENCE_PATTERN = re.compile(r"!\[([^\]]+)\]\[([^\]]*)\]")
 REFERENCE_DEFINITION_PATTERN = re.compile(
     r"(?m)^[ ]{0,3}\[([^\]]+)\]:[ \t]*(?:<([^>\r\n]+)>|(\S+))"
 )
 HEADING_PATTERN = re.compile(r"^ {0,3}#{1,6}\s+(.+?)\s*#*\s*$")
 SETEXT_PATTERN = re.compile(r"^ {0,3}(?:=+|-+)\s*$")
-FENCE_PATTERN = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+INLINE_CODE_PATTERN = re.compile(r"(?P<ticks>`+)(?P<body>[\s\S]*?)(?P=ticks)")
+FENCE_PATTERN = re.compile(r"^ {0,3}(`{3,}|~{3,})([^\r\n]*)$")
 
 
 def normalize(path: str) -> str:
@@ -80,12 +83,22 @@ def github_slug(value: str) -> str:
     return re.sub(r"[\s-]+", "-", value).strip("-")
 
 
+def parse_fence(line: str) -> tuple[str, int, str] | None:
+    match = FENCE_PATTERN.match(line)
+    if not match:
+        return None
+    marker = match.group(1)
+    info = match.group(2)
+    if marker[0] == "`" and "`" in info:
+        return None
+    return marker[0], len(marker), info
+
+
 def heading_slugs(path: Path) -> set[str]:
     slugs: set[str] = set()
     counts: dict[str, int] = {}
     lines = path.read_text(encoding="utf-8").splitlines()
-    in_fence = False
-    fence_marker = ""
+    in_fence: tuple[str, int] | None = None
 
     def add_heading(value: str) -> None:
         slug = github_slug(value)
@@ -100,16 +113,13 @@ def heading_slugs(path: Path) -> set[str]:
         slugs.add(candidate)
 
     for index, line in enumerate(lines):
-        fence = FENCE_PATTERN.match(line)
-        if fence:
-            marker = fence.group(1)
-            if not in_fence:
-                in_fence = True
-                fence_marker = marker[0]
-            elif marker[0] == fence_marker:
-                in_fence = False
+        fence = parse_fence(line)
+        if in_fence is not None:
+            if fence and fence[0] == in_fence[0] and fence[1] >= in_fence[1] and not fence[2].strip():
+                in_fence = None
             continue
-        if in_fence:
+        if fence:
+            in_fence = (fence[0], fence[1])
             continue
 
         atx = HEADING_PATTERN.match(line)
@@ -140,21 +150,26 @@ def clean_link_target(raw_target: str) -> str:
 
 def without_fenced_code(contents: str) -> str:
     visible_lines: list[str] = []
-    in_fence = False
-    fence_marker = ""
+    in_fence: tuple[str, int] | None = None
     for line in contents.splitlines():
-        fence = FENCE_PATTERN.match(line)
-        if fence:
-            marker = fence.group(1)
-            if not in_fence:
-                in_fence = True
-                fence_marker = marker[0]
-            elif marker[0] == fence_marker:
-                in_fence = False
+        fence = parse_fence(line)
+        if in_fence is not None:
+            if fence and fence[0] == in_fence[0] and fence[1] >= in_fence[1] and not fence[2].strip():
+                in_fence = None
             continue
-        if not in_fence:
+        if fence:
+            in_fence = (fence[0], fence[1])
+            continue
+        if in_fence is None:
             visible_lines.append(line)
     return "\n".join(visible_lines)
+
+
+def without_inline_code(contents: str) -> str:
+    def replace_code_span(match: re.Match[str]) -> str:
+        return "".join("\n" if character == "\n" else " " for character in match.group(0))
+
+    return INLINE_CODE_PATTERN.sub(replace_code_span, contents)
 
 
 def check_links(root: Path, entries: list[dict[str, str]]) -> list[str]:
@@ -165,7 +180,7 @@ def check_links(root: Path, entries: list[dict[str, str]]) -> list[str]:
         source = root / entry["path"]
         if not source.is_file():
             continue
-        contents = without_fenced_code(source.read_text(encoding="utf-8"))
+        contents = without_inline_code(without_fenced_code(source.read_text(encoding="utf-8")))
         references: dict[str, str] = {}
         for definition in REFERENCE_DEFINITION_PATTERN.finditer(contents):
             raw_target = definition.group(2) or definition.group(3)
@@ -193,7 +208,18 @@ def check_links(root: Path, entries: list[dict[str, str]]) -> list[str]:
         for raw_target in INLINE_LINK_PATTERN.findall(contents):
             validate_target(raw_target, raw_target)
 
+        for raw_target in IMAGE_LINK_PATTERN.findall(contents):
+            validate_target(raw_target, raw_target)
+
         for reference in REFERENCE_LINK_PATTERN.finditer(contents):
+            label = reference.group(2) or reference.group(1)
+            key = normalize_reference_label(label)
+            if key not in references:
+                broken.append(f"{entry['path']}: missing reference definition: {reference.group(0)}")
+            else:
+                validate_target(references[key], reference.group(0))
+
+        for reference in IMAGE_REFERENCE_PATTERN.finditer(contents):
             label = reference.group(2) or reference.group(1)
             key = normalize_reference_label(label)
             if key not in references:

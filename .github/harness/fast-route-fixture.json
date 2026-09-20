@@ -97,6 +97,36 @@
         "docs/example.md": "```md\n[Broken](missing.md)\n```\n"
       },
       "expected": "FAST"
+    },
+    {
+      "name": "fence-language-line-is-not-close",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "```md\n```python\n```\n[Broken](missing.md)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "missing-inline-image",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "![Logo](missing.png)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "inline-code-link-is-ignored",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "`[Guide](missing.md)`\n"
+      },
+      "expected": "FAST"
     }
   ]
 }
