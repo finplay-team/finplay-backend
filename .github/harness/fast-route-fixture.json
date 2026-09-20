@@ -179,6 +179,36 @@
         "docs/guide.md": "# Guide\n"
       },
       "expected": "STANDARD"
+    },
+    {
+      "name": "unsupported-raw-html-link",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "<a href=\"missing.md\">Guide</a>\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "unsupported-autolink",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "<https://example.com/docs>\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "unsupported-nested-link-label",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "[Go [now]](missing.md)\n"
+      },
+      "expected": "STANDARD"
     }
   ]
 }

@@ -30,6 +30,11 @@ INLINE_LINK_OPEN_PATTERN = re.compile(r"(?<![\\!])(?:\\\\)*(?:\[[^\]]*\])\(")
 IMAGE_LINK_OPEN_PATTERN = re.compile(r"(?<!\\)(?:\\\\)*!\[[^\]]*\]\(")
 REFERENCE_LINK_PATTERN = re.compile(r"(?<![\\!])(?:\\\\)*(?:\[([^\]]+)\])\[([^\]]*)\]")
 IMAGE_REFERENCE_PATTERN = re.compile(r"(?<!\\)(?:\\\\)*!\[([^\]]+)\]\[([^\]]*)\]")
+RAW_HTML_PATTERN = re.compile(r"(?is)<\s*/?\s*[a-z][^>\r\n]*>")
+AUTOLINK_PATTERN = re.compile(r"(?is)<(?:https?://|mailto:)[^>\r\n]+>")
+NESTED_LINK_LABEL_PATTERN = re.compile(
+    r"(?<![\\!])(?:\\\\)*!?\[[^\]]*\[[^\]]*\]\](?:\(|\[)"
+)
 REFERENCE_DEFINITION_PATTERN = re.compile(
     r"(?m)^[ ]{0,3}\[([^\]]+)\]:[ \t]*(?:<([^>\r\n]+)>|(\S+))"
 )
@@ -246,6 +251,11 @@ def check_links(root: Path, entries: list[dict[str, str]]) -> list[str]:
             if key not in references:
                 references[key] = raw_target
 
+        if RAW_HTML_PATTERN.search(contents) or AUTOLINK_PATTERN.search(contents):
+            broken.append(f"{entry['path']}: unsupported raw HTML or autolink syntax")
+        if NESTED_LINK_LABEL_PATTERN.search(contents):
+            broken.append(f"{entry['path']}: unsupported nested link label syntax")
+
         def validate_target(raw_target: str, raw_link: str) -> None:
             target = clean_link_target(raw_target)
             if not target or is_external(target):
@@ -316,7 +326,7 @@ def classify(root: Path, entries: list[dict[str, str]]) -> dict:
 
     broken_links = check_links(root, entries)
     if broken_links:
-        reasons.append(f"깨진 문서 링크 {len(broken_links)}건")
+        reasons.append(f"문서 링크 검증 실패 또는 미지원 문법 {len(broken_links)}건")
 
     path = "FAST" if not reasons else "STANDARD"
     return {
