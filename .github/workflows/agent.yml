@@ -183,6 +183,22 @@ jobs:
           echo "evidence_path=/tmp/fast-route-evidence.md" >> "$GITHUB_OUTPUT"
           cat /tmp/fast-route-evidence.md >> "$GITHUB_STEP_SUMMARY"
 
+      - name: 문서 Fast 경로 판정 실패 이력 코멘트 — PR 생성 전
+        id: fast_route_failure_issue_comment
+        if: always() && steps.implement.outcome == 'success' && steps.fast_route.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          FAST_ROUTE_OUTCOME: ${{ steps.fast_route.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          printf '%s\n' \
+            "문서 Fast 경로 판정이 정상 종료되지 않았습니다 (outcome: $FAST_ROUTE_OUTCOME) — PR이 열리지 않았습니다." \
+            "Fast 판정 실패를 빌드 실패로 대신 기록하지 않고, 경로 판정 로그를 사람이 확인해야 합니다." \
+            "" \
+            "실행 로그: $RUN_URL" > /tmp/fast-route-failure-issue-body.md
+          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/fast-route-failure-issue-body.md
+
       - name: 빌드 검증 (러너가 직접 실행 — 에이전트 자기 보고 아님)
         id: build
         if: success() && steps.fast_route.outputs.path != 'FAST'
@@ -221,9 +237,9 @@ jobs:
 
       - name: 빌드 검증 실패 이력 코멘트 — PR 생성 전
         id: build_failure_issue_comment
-        # 구현이 성공했는데 빌드가 실패/취소된 경우만 잡는다 — 구현이 실패했으면 build 자체가 skipped라
-        # steps.implement.outcome == 'success' 조건으로 위 1번과 상호 배타를 이룬다.
-        if: always() && steps.implement.outcome == 'success' && steps.fast_route.outputs.path != 'FAST' && steps.build.outcome != 'success'
+        # 구현과 Fast 경로 판정이 성공했는데 Standard 빌드가 실패/취소된 경우만 잡는다 —
+        # 구현 또는 Fast 판정이 실패하면 각각의 전용 이력 코멘트가 원인을 남긴다.
+        if: always() && steps.implement.outcome == 'success' && steps.fast_route.outcome == 'success' && steps.fast_route.outputs.path != 'FAST' && steps.build.outcome != 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}

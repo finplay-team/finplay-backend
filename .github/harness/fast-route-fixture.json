@@ -5,6 +5,9 @@
       "files": [
         {"status": "M", "path": "docs/example.md"}
       ],
+      "documents": {
+        "docs/example.md": "# Example\n"
+      },
       "expected": "FAST"
     },
     {
@@ -12,6 +15,9 @@
       "files": [
         {"status": "A", "path": "ai/adr/0032-adaptive-human-in-the-loop-product-improvement-harness.md"}
       ],
+      "documents": {
+        "ai/adr/0032-adaptive-human-in-the-loop-product-improvement-harness.md": "# ADR\n"
+      },
       "expected": "FAST"
     },
     {
@@ -30,6 +36,13 @@
       "expected": "STANDARD"
     },
     {
+      "name": "resource-markdown",
+      "files": [
+        {"status": "M", "path": "src/main/resources/banner.md"}
+      ],
+      "expected": "STANDARD"
+    },
+    {
       "name": "deleted-markdown",
       "files": [
         {"status": "D", "path": "docs/retired.md"}
@@ -42,6 +55,28 @@
         {"status": "M", "path": ".github/workflows/agent.yml"}
       ],
       "expected": "STANDARD"
+    },
+    {
+      "name": "broken-reference-link",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "[Guide][guide]\n\n[guide]: missing.md\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "valid-reference-and-anchors",
+      "files": [
+        {"status": "M", "path": "docs/example.md"},
+        {"status": "M", "path": "docs/guide.md"}
+      ],
+      "documents": {
+        "docs/example.md": "# Intro\n\n# Intro\n\nDetails\n=======\n\n[Guide][guide]\n[Second intro][second]\n\n[guide]: guide.md#details\n[second]: #intro-1\n",
+        "docs/guide.md": "# Guide\n\nDetails\n=======\n"
+      },
+      "expected": "FAST"
     }
   ]
 }

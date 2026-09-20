@@ -8,12 +8,14 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 import unicodedata
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 
 ALLOWED_SUFFIXES = (".md", ".markdown")
+ALLOWED_PREFIXES = ("docs/", "ai/adr/")
 FORBIDDEN_EXACT = {
     "agents.md",
     "claude.md",
@@ -24,8 +26,14 @@ FORBIDDEN_EXACT = {
     "docs/conventions/team.md",
 }
 FORBIDDEN_PREFIXES = (".agents/", ".claude/", ".codex/", ".github/workflows/")
-LINK_PATTERN = re.compile(r"(?<!!)(?:\[[^\]]*\])\(([^)]+)\)")
+INLINE_LINK_PATTERN = re.compile(r"(?<!!)(?:\[[^\]]*\])\(([^)\r\n]+)\)")
+REFERENCE_LINK_PATTERN = re.compile(r"(?<!!)(?:\[([^\]]+)\])\[([^\]]*)\]")
+REFERENCE_DEFINITION_PATTERN = re.compile(
+    r"(?m)^[ ]{0,3}\[([^\]]+)\]:[ \t]*(?:<([^>\r\n]+)>|(\S+))"
+)
 HEADING_PATTERN = re.compile(r"^ {0,3}#{1,6}\s+(.+?)\s*#*\s*$")
+SETEXT_PATTERN = re.compile(r"^ {0,3}(?:=+|-+)\s*$")
+FENCE_PATTERN = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 
 
 def normalize(path: str) -> str:
@@ -42,7 +50,11 @@ def is_forbidden(path: str) -> bool:
 
 def is_allowed_doc(path: str) -> bool:
     value = normalize(path)
-    return not is_forbidden(value) and value.endswith(ALLOWED_SUFFIXES)
+    return (
+        not is_forbidden(value)
+        and value.startswith(ALLOWED_PREFIXES)
+        and value.endswith(ALLOWED_SUFFIXES)
+    )
 
 
 def run_git(*args: str) -> str:
@@ -63,26 +75,68 @@ def changed_entries(base: str) -> list[dict[str, str]]:
 
 
 def github_slug(value: str) -> str:
-    value = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode()
-    value = value.lower()
-    value = re.sub(r"[^a-z0-9 -]", "", value)
-    return re.sub(r"[ -]+", "-", value).strip("-")
+    value = unicodedata.normalize("NFKD", value).casefold()
+    value = "".join(char for char in value if not unicodedata.combining(char))
+    value = re.sub(r"[^\w\s-]", "", value)
+    return re.sub(r"[\s-]+", "-", value).strip("-")
 
 
 def heading_slugs(path: Path) -> set[str]:
     slugs: set[str] = set()
-    for line in path.read_text(encoding="utf-8").splitlines():
-        match = HEADING_PATTERN.match(line)
-        if match:
-            slug = github_slug(match.group(1))
-            if slug:
-                slugs.add(slug)
+    counts: dict[str, int] = {}
+    lines = path.read_text(encoding="utf-8").splitlines()
+    in_fence = False
+    fence_marker = ""
+
+    def add_heading(value: str) -> None:
+        slug = github_slug(value)
+        if not slug:
+            return
+        occurrence = counts.get(slug, 0)
+        candidate = slug if occurrence == 0 else f"{slug}-{occurrence}"
+        while candidate in slugs:
+            occurrence += 1
+            candidate = f"{slug}-{occurrence}"
+        counts[slug] = occurrence + 1
+        slugs.add(candidate)
+
+    for index, line in enumerate(lines):
+        fence = FENCE_PATTERN.match(line)
+        if fence:
+            marker = fence.group(1)
+            if not in_fence:
+                in_fence = True
+                fence_marker = marker[0]
+            elif marker[0] == fence_marker:
+                in_fence = False
+            continue
+        if in_fence:
+            continue
+
+        atx = HEADING_PATTERN.match(line)
+        if atx:
+            add_heading(atx.group(1))
+            continue
+
+        if index + 1 < len(lines) and line.strip() and SETEXT_PATTERN.match(lines[index + 1]):
+            add_heading(line.strip())
     return slugs
 
 
 def is_external(target: str) -> bool:
     scheme = urlsplit(target).scheme.lower()
-    return scheme in {"http", "https", "mailto", "tel"}
+    return target.startswith("//") or scheme in {"http", "https", "mailto", "tel"}
+
+
+def normalize_reference_label(value: str) -> str:
+    return " ".join(value.casefold().split())
+
+
+def clean_link_target(raw_target: str) -> str:
+    target = raw_target.strip()
+    if target.startswith("<") and ">" in target:
+        return target[1 : target.index(">")].strip()
+    return target.split(None, 1)[0]
 
 
 def check_links(root: Path, entries: list[dict[str, str]]) -> list[str]:
@@ -93,10 +147,16 @@ def check_links(root: Path, entries: list[dict[str, str]]) -> list[str]:
         source = root / entry["path"]
         if not source.is_file():
             continue
-        for raw_target in LINK_PATTERN.findall(source.read_text(encoding="utf-8")):
-            target = raw_target.strip().strip("<>").split(' "', 1)[0].split(" '", 1)[0]
+        contents = source.read_text(encoding="utf-8")
+        references: dict[str, str] = {}
+        for definition in REFERENCE_DEFINITION_PATTERN.finditer(contents):
+            raw_target = definition.group(2) or definition.group(3)
+            references[normalize_reference_label(definition.group(1))] = raw_target
+
+        def validate_target(raw_target: str, raw_link: str) -> None:
+            target = clean_link_target(raw_target)
             if not target or is_external(target):
-                continue
+                return
             parsed = urlsplit(target)
             fragment = unquote(parsed.fragment)
             target_path = unquote(parsed.path)
@@ -104,14 +164,28 @@ def check_links(root: Path, entries: list[dict[str, str]]) -> list[str]:
             try:
                 document.relative_to(root.resolve())
             except ValueError:
-                broken.append(f"{entry['path']}: outside repository: {raw_target}")
-                continue
+                broken.append(f"{entry['path']}: outside repository: {raw_link}")
+                return
             if not document.is_file():
-                broken.append(f"{entry['path']}: missing target: {raw_target}")
-                continue
+                broken.append(f"{entry['path']}: missing target: {raw_link}")
+                return
             if fragment and fragment not in heading_slugs(document):
-                broken.append(f"{entry['path']}: missing anchor: {raw_target}")
-    return broken
+                broken.append(f"{entry['path']}: missing anchor: {raw_link}")
+
+        for raw_target in INLINE_LINK_PATTERN.findall(contents):
+            validate_target(raw_target, raw_target)
+
+        for reference in REFERENCE_LINK_PATTERN.finditer(contents):
+            label = reference.group(2) or reference.group(1)
+            key = normalize_reference_label(label)
+            if key not in references:
+                broken.append(f"{entry['path']}: missing reference definition: {reference.group(0)}")
+            else:
+                validate_target(references[key], reference.group(0))
+
+        for label, raw_target in references.items():
+            validate_target(raw_target, f"[{label}]: {raw_target}")
+    return list(dict.fromkeys(broken))
 
 
 def classify(root: Path, entries: list[dict[str, str]]) -> dict:
@@ -142,11 +216,15 @@ def run_self_test(fixture_path: Path) -> None:
     fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
     failures = []
     for case in fixture["cases"]:
-        # Fixture cases exercise only the deterministic path allowlist. Link checking is
-        # covered by the real classification run against the checked-out repository.
-        result = classify(Path("/__h13_fixture_repository__"), case["files"])
-        if result["path"] != case["expected"]:
-            failures.append(f"{case['name']}: expected {case['expected']}, got {result['path']}")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for path, contents in case.get("documents", {}).items():
+                document = root / path
+                document.parent.mkdir(parents=True, exist_ok=True)
+                document.write_text(contents, encoding="utf-8")
+            result = classify(root, case["files"])
+            if result["path"] != case["expected"]:
+                failures.append(f"{case['name']}: expected {case['expected']}, got {result['path']}")
     if failures:
         raise SystemExit("Fast route self-test failed:\n" + "\n".join(failures))
     print(f"Fast route self-test passed ({len(fixture['cases'])} cases)")
