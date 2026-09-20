@@ -378,8 +378,8 @@ jobs:
         # 이력 코멘트 스텝은 취소된 런에서도 흔적을 남겨야 하므로 !cancelled()가 아니라 always()를 쓴다 —
         # timeout-minutes 초과는 GitHub이 job을 '취소'로 처리하는데 가장 오래 도는 스텝이 바로 이 autofix라
         # 타임아웃이 걸릴 확률이 제일 높다. !cancelled()면 그 경우 PR에 아무 흔적도 안 남아
-        # spec.md의 "코멘트 이력만 보고 왜 멈췄는지 알 수 있다"를 못 지킨다. 정보성 코멘트는 취소된 런에
-        # 정보성 기록이라 취소된 런에 붙어도 무해하며, 이력 유지를 위해 always()를 사용한다 (PR #293 4차 리뷰 권장 1).
+        # spec.md의 "코멘트 이력만 보고 왜 멈췄는지 알 수 있다"는 요구를 지킨다.
+        # 이력 코멘트는 정보성 기록이므로 취소된 런에도 남겨야 한다 (PR #293 4차 리뷰 권장 1).
         if: always() && steps.prep_autofix.outcome == 'success' && steps.autofix.outcome != 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -496,7 +496,7 @@ jobs:
         # 이미 깨진 상태라 이 스텝 자체가 도달 전에 skip된다 — 바로 위 build_autofix if:의 커스텀 조건과
         # 같은 이유로 명시적 status 함수가 필요하다 (PR #271 리뷰가 정리한 패턴, ADR-0016).
         # 이력 코멘트라 !cancelled()가 아니라 always()다 — 취소(타임아웃 포함)된 런에서도 왜 멈췄는지
-        # 흔적은 남아야 한다. 정보성 코멘트는 취소된 런에 붙어도 무해하고, 승인만 !cancelled()로 막는다
+        # 흔적은 남아야 한다. 정보성 코멘트는 취소된 런에 붙어도 무해하다
         # (PR #293 4차 리뷰 권장 1). 같은 이유로 조건도 == 'failure'가 아니라 != 'success'다 — 취소된 스텝의
         # outcome은 'cancelled'이므로 == 'failure'로는 always()를 붙인 의미가 없어진다 (5차 리뷰 권장 1).
         # 위 build_autofix가 autofix 성공 시 반드시 실행되므로 여기서 skipped가 잡힐 일은 없다.
