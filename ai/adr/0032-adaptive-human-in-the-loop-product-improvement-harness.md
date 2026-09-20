@@ -1,10 +1,12 @@
 # ADR-0032: 적응형 Human-in-the-loop 지속적 제품 개선 하네스
 
-- 상태: 제안
+- 상태: 승인됨
 - 날짜: 2026-09-09
 - 대응 이슈: [#557](https://github.com/finplay-team/finplay-backend/issues/557)
-- 관계: [ADR-0005](0005-local-agent-orchestration.md), [ADR-0008](0008-four-agent-roster.md), [ADR-0009](0009-codex-local-orchestration.md), [ADR-0010](0010-agent-session-lifecycle.md)의 로컬 4역할 체제를 유지하면서 Discovery·Triage·Approval·Observability를 추가한다. [ADR-0013](0013-issue-triggered-agent-harness.md)과 [ADR-0016](0016-review-gate-auto-fix-round.md)의 조건부 자동 승인 결정은 이 ADR이 채택되면 대체한다. 자동 머지 금지와 [ADR-0019](0019-pre-pr-failure-issue-comment.md)의 실패 이력 원칙은 유지한다.
-- 주의: 이 문서는 아직 채택된 정책이나 구현 완료 기록이 아니다. 팀 결정 전까지 현재 워크플로우의 동작을 바꾸지 않는다.
+- 관계: [ADR-0005](0005-local-agent-orchestration.md), [ADR-0008](0008-four-agent-roster.md), [ADR-0009](0009-codex-local-orchestration.md), [ADR-0010](0010-agent-session-lifecycle.md)의 로컬 4역할 체제를 유지하면서 Discovery·Triage·Approval·Observability를 추가한다. [ADR-0013](0013-issue-triggered-agent-harness.md)과 [ADR-0016](0016-review-gate-auto-fix-round.md)의 조건부 자동 승인 결정은 이 ADR이 대체한다. 자동 머지 금지와 [ADR-0019](0019-pre-pr-failure-issue-comment.md)의 실패 이력 원칙은 유지한다.
+- 채택 범위: Pilot 0은 H-07부터 순차 적용하며, 각 후속 H 작업은 별도 Issue·PR과 검증을 거친다. 이 ADR의 채택은 전체 adaptive harness가 구현 완료되었다는 뜻이 아니다.
+
+> 현재 적용 규칙: GitHub Actions는 PR을 준비하고 리뷰 결과를 남길 수 있지만 최종 PR 승인과 merge는 사람만 수행한다. 조건부 자동 승인과 봇 승인은 사용하지 않는다.
 
 ## 1. 맥락
 
