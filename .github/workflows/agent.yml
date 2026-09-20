@@ -193,8 +193,8 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           printf '%s\n' \
-            "문서 Fast 경로 판정이 정상 종료되지 않았습니다 (outcome: $FAST_ROUTE_OUTCOME) — PR이 열리지 않았습니다." \
-            "Fast 판정 실패를 빌드 실패로 대신 기록하지 않고, 경로 판정 로그를 사람이 확인해야 합니다." \
+            "문서 Fast 경로 판정이 정상 종료되지 않았습니다 (outcome: $FAST_ROUTE_OUTCOME)." \
+            "구현 에이전트가 이미 PR을 열었을 수 있으므로, 해당 PR을 자동 검증 완료로 처리하지 않고 사람이 확인해야 합니다." \
             "" \
             "실행 로그: $RUN_URL" > /tmp/fast-route-failure-issue-body.md
           gh issue comment "$ISSUE_NUMBER" --body-file /tmp/fast-route-failure-issue-body.md
@@ -247,7 +247,8 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           printf '%s\n' \
-            "빌드 검증이 정상 종료되지 않았습니다 (outcome: $BUILD_OUTCOME) — 구현은 끝났지만 PR이 열리지 않았습니다." \
+            "빌드 검증이 정상 종료되지 않았습니다 (outcome: $BUILD_OUTCOME)." \
+            "구현 에이전트가 이미 PR을 열었을 수 있으므로, 해당 PR을 자동 검증 완료로 처리하지 않고 사람이 확인해야 합니다." \
             "cancelled은 job 타임아웃(timeout-minutes)일 수 있습니다." \
             "" \
             "실행 로그: $RUN_URL" > /tmp/build-failure-issue-body.md
@@ -257,7 +258,9 @@ jobs:
         # 워크스페이스에 이미 구현 스텝이 만든 브랜치가 체크아웃돼 있으므로 그 브랜치로 정확히 찾는다.
         # 이슈번호 패턴으로 전체 open PR을 뒤지면 같은 이슈의 예전 PR을 잘못 집을 수 있다 (PR #232 리뷰).
         id: pr
-        if: success() && (steps.build.outcome == 'success' || steps.fast_route.outputs.path == 'FAST')
+        if: >
+          always() && steps.implement.outcome == 'success' &&
+          (steps.fast_route.outcome != 'success' || steps.build.outcome == 'success' || steps.fast_route.outputs.path == 'FAST')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -267,6 +270,22 @@ jobs:
           # 이후 스텝이 전부 조용히 스킵돼 job이 우연히 초록으로 끝나는 것에 의존하지 않는다 (PR #293 3차 리뷰 권장 3).
           [ -n "$NUMBER" ] || { echo "::error::PR을 찾지 못했습니다"; exit 1; }
           echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: 문서 Fast 경로 판정 실패 PR 코멘트
+        id: fast_route_failure_pr_comment
+        if: always() && steps.implement.outcome == 'success' && steps.fast_route.outcome != 'success' && steps.pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          FAST_ROUTE_OUTCOME: ${{ steps.fast_route.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          printf '%s\n' \
+            "문서 Fast 경로 판정이 정상 종료되지 않았습니다 (outcome: $FAST_ROUTE_OUTCOME)." \
+            "이 PR은 Fast 검증 완료로 처리되지 않았으며, 최종 리뷰 전에 사람이 실행 로그와 변경 범위를 확인해야 합니다." \
+            "" \
+            "실행 로그: $RUN_URL" > /tmp/fast-route-failure-pr-body.md
+          gh pr comment "$PR_NUMBER" --body-file /tmp/fast-route-failure-pr-body.md
 
       - name: PR 번호 조회 실패 이력 코멘트
         id: pr_lookup_failure_comment

@@ -77,6 +77,26 @@
         "docs/guide.md": "# Guide\n\nDetails\n=======\n"
       },
       "expected": "FAST"
+    },
+    {
+      "name": "korean-anchor",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "# 한글 제목\n\n[Title][title]\n\n[title]: #한글-제목\n"
+      },
+      "expected": "FAST"
+    },
+    {
+      "name": "code-fence-link-is-ignored",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "```md\n[Broken](missing.md)\n```\n"
+      },
+      "expected": "FAST"
     }
   ]
 }

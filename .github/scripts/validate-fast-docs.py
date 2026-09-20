@@ -75,8 +75,7 @@ def changed_entries(base: str) -> list[dict[str, str]]:
 
 
 def github_slug(value: str) -> str:
-    value = unicodedata.normalize("NFKD", value).casefold()
-    value = "".join(char for char in value if not unicodedata.combining(char))
+    value = unicodedata.normalize("NFC", value).casefold()
     value = re.sub(r"[^\w\s-]", "", value)
     return re.sub(r"[\s-]+", "-", value).strip("-")
 
@@ -139,6 +138,25 @@ def clean_link_target(raw_target: str) -> str:
     return target.split(None, 1)[0]
 
 
+def without_fenced_code(contents: str) -> str:
+    visible_lines: list[str] = []
+    in_fence = False
+    fence_marker = ""
+    for line in contents.splitlines():
+        fence = FENCE_PATTERN.match(line)
+        if fence:
+            marker = fence.group(1)
+            if not in_fence:
+                in_fence = True
+                fence_marker = marker[0]
+            elif marker[0] == fence_marker:
+                in_fence = False
+            continue
+        if not in_fence:
+            visible_lines.append(line)
+    return "\n".join(visible_lines)
+
+
 def check_links(root: Path, entries: list[dict[str, str]]) -> list[str]:
     broken: list[str] = []
     for entry in entries:
@@ -147,7 +165,7 @@ def check_links(root: Path, entries: list[dict[str, str]]) -> list[str]:
         source = root / entry["path"]
         if not source.is_file():
             continue
-        contents = source.read_text(encoding="utf-8")
+        contents = without_fenced_code(source.read_text(encoding="utf-8"))
         references: dict[str, str] = {}
         for definition in REFERENCE_DEFINITION_PATTERN.finditer(contents):
             raw_target = definition.group(2) or definition.group(3)
