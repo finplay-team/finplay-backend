@@ -137,6 +137,16 @@
         "docs/example.md": "\\[Guide](missing.md)\n\\![Logo](missing.png)\n"
       },
       "expected": "FAST"
+    },
+    {
+      "name": "even-escaped-links-are-links",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "\\\\[Guide](missing.md)\n\\\\![Logo](missing.png)\n"
+      },
+      "expected": "STANDARD"
     }
   ]
 }

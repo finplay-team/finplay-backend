@@ -26,10 +26,10 @@ FORBIDDEN_EXACT = {
     "docs/conventions/team.md",
 }
 FORBIDDEN_PREFIXES = (".agents/", ".claude/", ".codex/", ".github/workflows/")
-INLINE_LINK_PATTERN = re.compile(r"(?<![\\!])(?:\[[^\]]*\])\(([^)\r\n]+)\)")
-IMAGE_LINK_PATTERN = re.compile(r"(?<!\\)!\[[^\]]*\]\(([^)\r\n]+)\)")
-REFERENCE_LINK_PATTERN = re.compile(r"(?<![\\!])(?:\[([^\]]+)\])\[([^\]]*)\]")
-IMAGE_REFERENCE_PATTERN = re.compile(r"(?<!\\)!\[([^\]]+)\]\[([^\]]*)\]")
+INLINE_LINK_PATTERN = re.compile(r"(?<![\\!])(?:\\\\)*(?:\[[^\]]*\])\(([^)\r\n]+)\)")
+IMAGE_LINK_PATTERN = re.compile(r"(?<!\\)(?:\\\\)*!\[[^\]]*\]\(([^)\r\n]+)\)")
+REFERENCE_LINK_PATTERN = re.compile(r"(?<![\\!])(?:\\\\)*(?:\[([^\]]+)\])\[([^\]]*)\]")
+IMAGE_REFERENCE_PATTERN = re.compile(r"(?<!\\)(?:\\\\)*!\[([^\]]+)\]\[([^\]]*)\]")
 REFERENCE_DEFINITION_PATTERN = re.compile(
     r"(?m)^[ ]{0,3}\[([^\]]+)\]:[ \t]*(?:<([^>\r\n]+)>|(\S+))"
 )
