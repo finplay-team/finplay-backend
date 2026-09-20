@@ -26,8 +26,8 @@ FORBIDDEN_EXACT = {
     "docs/conventions/team.md",
 }
 FORBIDDEN_PREFIXES = (".agents/", ".claude/", ".codex/", ".github/workflows/")
-INLINE_LINK_PATTERN = re.compile(r"(?<![\\!])(?:\\\\)*(?:\[[^\]]*\])\(([^)\r\n]+)\)")
-IMAGE_LINK_PATTERN = re.compile(r"(?<!\\)(?:\\\\)*!\[[^\]]*\]\(([^)\r\n]+)\)")
+INLINE_LINK_OPEN_PATTERN = re.compile(r"(?<![\\!])(?:\\\\)*(?:\[[^\]]*\])\(")
+IMAGE_LINK_OPEN_PATTERN = re.compile(r"(?<!\\)(?:\\\\)*!\[[^\]]*\]\(")
 REFERENCE_LINK_PATTERN = re.compile(r"(?<![\\!])(?:\\\\)*(?:\[([^\]]+)\])\[([^\]]*)\]")
 IMAGE_REFERENCE_PATTERN = re.compile(r"(?<!\\)(?:\\\\)*!\[([^\]]+)\]\[([^\]]*)\]")
 REFERENCE_DEFINITION_PATTERN = re.compile(
@@ -58,6 +58,10 @@ def is_allowed_doc(path: str) -> bool:
         and value.startswith(ALLOWED_PREFIXES)
         and value.endswith(ALLOWED_SUFFIXES)
     )
+
+
+def is_regular_file(path: Path) -> bool:
+    return path.is_file() and not path.is_symlink()
 
 
 def run_git(*args: str) -> str:
@@ -148,6 +152,60 @@ def clean_link_target(raw_target: str) -> str:
     return target.split(None, 1)[0]
 
 
+def parse_inline_target(contents: str, open_index: int) -> tuple[str, int] | None:
+    index = open_index + 1
+    if index >= len(contents):
+        return None
+
+    if contents[index] == "<":
+        target_start = index + 1
+        index = target_start
+        while index < len(contents):
+            if contents[index] == "\\" and index + 1 < len(contents):
+                index += 2
+                continue
+            if contents[index] == ">":
+                target = contents[target_start:index]
+                index += 1
+                while index < len(contents) and contents[index] != ")":
+                    index += 1
+                if index < len(contents):
+                    return target, index
+                return None
+            if contents[index] in "\r\n":
+                return None
+            index += 1
+        return None
+
+    target_start = index
+    depth = 0
+    while index < len(contents):
+        character = contents[index]
+        if character == "\\" and index + 1 < len(contents):
+            index += 2
+            continue
+        if character in "\r\n":
+            return None
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            if depth == 0:
+                return contents[target_start:index], index
+            depth -= 1
+        index += 1
+    return None
+
+
+def inline_targets(contents: str, pattern: re.Pattern[str]):
+    for match in pattern.finditer(contents):
+        parsed = parse_inline_target(contents, match.end() - 1)
+        if parsed is None:
+            yield None, contents[match.start() : match.end()]
+        else:
+            target, closing_index = parsed
+            yield target, contents[match.start() : closing_index + 1]
+
+
 def without_fenced_code(contents: str) -> str:
     visible_lines: list[str] = []
     in_fence: tuple[str, int] | None = None
@@ -178,13 +236,15 @@ def check_links(root: Path, entries: list[dict[str, str]]) -> list[str]:
         if not is_allowed_doc(entry["path"]):
             continue
         source = root / entry["path"]
-        if not source.is_file():
+        if not is_regular_file(source):
             continue
         contents = without_inline_code(without_fenced_code(source.read_text(encoding="utf-8")))
         references: dict[str, str] = {}
         for definition in REFERENCE_DEFINITION_PATTERN.finditer(contents):
             raw_target = definition.group(2) or definition.group(3)
-            references[normalize_reference_label(definition.group(1))] = raw_target
+            key = normalize_reference_label(definition.group(1))
+            if key not in references:
+                references[key] = raw_target
 
         def validate_target(raw_target: str, raw_link: str) -> None:
             target = clean_link_target(raw_target)
@@ -199,17 +259,23 @@ def check_links(root: Path, entries: list[dict[str, str]]) -> list[str]:
             except ValueError:
                 broken.append(f"{entry['path']}: outside repository: {raw_link}")
                 return
-            if not document.is_file():
+            if not is_regular_file(document):
                 broken.append(f"{entry['path']}: missing target: {raw_link}")
                 return
             if fragment and fragment not in heading_slugs(document):
                 broken.append(f"{entry['path']}: missing anchor: {raw_link}")
 
-        for raw_target in INLINE_LINK_PATTERN.findall(contents):
-            validate_target(raw_target, raw_target)
+        for raw_target, raw_link in inline_targets(contents, INLINE_LINK_OPEN_PATTERN):
+            if raw_target is None:
+                broken.append(f"{entry['path']}: unsupported inline link: {raw_link}")
+            else:
+                validate_target(raw_target, raw_link)
 
-        for raw_target in IMAGE_LINK_PATTERN.findall(contents):
-            validate_target(raw_target, raw_target)
+        for raw_target, raw_link in inline_targets(contents, IMAGE_LINK_OPEN_PATTERN):
+            if raw_target is None:
+                broken.append(f"{entry['path']}: unsupported inline image: {raw_link}")
+            else:
+                validate_target(raw_target, raw_link)
 
         for reference in REFERENCE_LINK_PATTERN.finditer(contents):
             label = reference.group(2) or reference.group(1)
@@ -238,10 +304,15 @@ def classify(root: Path, entries: list[dict[str, str]]) -> dict:
         reasons.append("변경 파일이 없습니다")
     for entry in entries:
         path = entry["path"]
-        if entry["status"].startswith(("D", "R", "C")):
+        status = entry["status"]
+        if status.startswith(("D", "R", "C")):
             reasons.append(f"삭제·이름 변경·복사는 Standard: {path}")
+        elif status not in {"A", "M"}:
+            reasons.append(f"지원하지 않는 변경 상태는 Standard: {status} {path}")
         elif not is_allowed_doc(path):
             reasons.append(f"allowlist 밖 파일: {path}")
+        elif not is_regular_file(root / path):
+            reasons.append(f"일반 파일이 아닌 문서: {path}")
 
     broken_links = check_links(root, entries)
     if broken_links:

@@ -147,6 +147,38 @@
         "docs/example.md": "\\\\[Guide](missing.md)\n\\\\![Logo](missing.png)\n"
       },
       "expected": "STANDARD"
+    },
+    {
+      "name": "unsupported-type-change-status",
+      "files": [
+        {"status": "T", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "# Example\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "balanced-parentheses-link-is-checked",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "[Go](target(foo.md).md)\n",
+        "docs/target(foo.md": "# Decoy\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "first-reference-definition-wins",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "[Guide][guide]\n\n[guide]: missing.md\n[guide]: guide.md\n",
+        "docs/guide.md": "# Guide\n"
+      },
+      "expected": "STANDARD"
     }
   ]
 }
