@@ -31,12 +31,12 @@
 - [x] 이슈→구현 자동화 ADR 작성 — 인증 방식 결정 포함 → [ADR-0013](adr/0013-issue-triggered-agent-harness.md) (`CLAUDE_CODE_OAUTH_TOKEN`, 팀장 개인 Max 구독)
 - [x] `claude-code-action` 워크플로우 추가 (`.github/workflows/agent.yml`, PR #232)
   - 트리거 1: 이슈에 `agent` 라벨 → 방향 제시 코멘트만 작성 (코드 수정 금지 프롬프트)
-  - 트리거 2: 이슈 댓글(PR 댓글 제외)의 `@claude` 멘션 — 멘션한 사람과 이슈를 연 사람 둘 다 팀 멤버일 때만 → 구현 + PR 오픈 + 자체 리뷰 후 조건부 승인
+  - 트리거 2: 이슈 댓글(PR 댓글 제외)의 `@claude` 멘션 — 멘션한 사람과 이슈를 연 사람 둘 다 팀 멤버일 때만 → 구현 + PR 오픈 + 자체 리뷰 후 사람 리뷰·승인 및 merge
 - [ ] 러너 환경 확인 — `ubuntu-latest`는 Docker 기본 제공이라 Testcontainers 빌드 가능. 명령은 `./gradlew` (Windows 표기 `.\gradlew.bat` 아님)
 - [x] 이슈 템플릿에 라벨 안내 추가
 - [x] PR 자체 리뷰에서 차단 발견 시 같은 PR 브랜치에서 자동 수정 1라운드 추가 → [ADR-0016](adr/0016-review-gate-auto-fix-round.md) (#292)
 - [ ] 지표 수집 스크립트 추가 (아래 "지표") + 주 1회 실행 (수동 또는 cron 워크플로우)
-- [ ] 테스트 이슈 1건으로 전체 흐름 검증 (①→②→③) — 조건부 승인이 실제로 붙는지, PR 작성자가 `claude[bot]`로 찍히는지(Claude GitHub App 설치 확인, PR #232 리뷰) 함께 확인한다
+- [ ] 테스트 이슈 1건으로 전체 흐름 검증 (①→②→③) — 사람 리뷰·승인 및 merge가 유지되는지, PR 작성자가 `claude[bot]`로 찍히는지(Claude GitHub App 설치 확인, PR #232 리뷰) 함께 확인한다
 
 ### 인증 트레이드오프 (ADR-0007에서 결정)
 
