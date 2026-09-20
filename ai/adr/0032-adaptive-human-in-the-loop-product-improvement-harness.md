@@ -1,14 +1,16 @@
 # ADR-0032: 적응형 Human-in-the-loop 지속적 제품 개선 하네스
 
-- 상태: 제안
+- 상태: 승인됨
 - 날짜: 2026-09-09
 - 대응 이슈: [#557](https://github.com/finplay-team/finplay-backend/issues/557)
-- 관계: [ADR-0005](0005-local-agent-orchestration.md), [ADR-0008](0008-four-agent-roster.md), [ADR-0009](0009-codex-local-orchestration.md), [ADR-0010](0010-agent-session-lifecycle.md)의 로컬 4역할 체제를 유지하면서 Discovery·Triage·Approval·Observability를 추가한다. [ADR-0013](0013-issue-triggered-agent-harness.md)과 [ADR-0016](0016-review-gate-auto-fix-round.md)의 조건부 자동 승인 결정은 이 ADR이 채택되면 대체한다. 자동 머지 금지와 [ADR-0019](0019-pre-pr-failure-issue-comment.md)의 실패 이력 원칙은 유지한다.
-- 주의: 이 문서는 아직 채택된 정책이나 구현 완료 기록이 아니다. 팀 결정 전까지 현재 워크플로우의 동작을 바꾸지 않는다.
+- 관계: [ADR-0005](0005-local-agent-orchestration.md), [ADR-0008](0008-four-agent-roster.md), [ADR-0009](0009-codex-local-orchestration.md), [ADR-0010](0010-agent-session-lifecycle.md)의 로컬 4역할 체제를 유지하면서 Discovery·Triage·Approval·Observability를 추가한다. [ADR-0013](0013-issue-triggered-agent-harness.md)과 [ADR-0016](0016-review-gate-auto-fix-round.md)의 조건부 자동 승인 결정은 이 ADR이 대체한다. 자동 머지 금지와 [ADR-0019](0019-pre-pr-failure-issue-comment.md)의 실패 이력 원칙은 유지한다.
+- 채택 범위: Pilot 0은 H-07부터 순차 적용하며, 각 후속 H 작업은 별도 Issue·PR과 검증을 거친다. 이 ADR의 채택은 전체 adaptive harness가 구현 완료되었다는 뜻이 아니다.
+
+> 현재 적용 규칙: GitHub Actions는 PR을 준비하고 리뷰 결과를 남길 수 있지만 최종 PR 승인과 merge는 사람만 수행한다. 조건부 자동 승인과 봇 승인은 사용하지 않는다.
 
 ## 1. 맥락
 
-FinPlay에는 로컬 `planner → implementer → tester → reviewer` 루프와 GitHub Actions의 `방향 제시 → 구현 → 빌드 → 자체 리뷰 → 최대 1회 자동 수정 → 조건부 승인` 루프가 함께 있다. 현재 구조는 spec 기반 개발, production 코드 작성자 단일화, 독립 리뷰, 사람 머지 같은 안전장치를 갖췄지만 다음 제품 개선 루프의 앞뒤가 비어 있다.
+FinPlay에는 로컬 `planner → implementer → tester → reviewer` 루프와 GitHub Actions의 `방향 제시 → 구현 → 빌드 → 자체 리뷰 → 최대 1회 자동 수정 → 조건부 승인` 루프가 함께 있었다. 기존 구조는 spec 기반 개발, production 코드 작성자 단일화, 독립 리뷰, 사람 머지 같은 안전장치를 갖췄지만 다음 제품 개선 루프의 앞뒤가 비어 있었다.
 
 - 제품·코드·운영 신호에서 개선 후보를 지속적으로 발견하는 Discovery가 없다.
 - 후보의 근거 신뢰도, 사용자 영향, 작업량, 위험도, 중복 여부를 같은 기준으로 비교하지 않는다.
@@ -45,12 +47,12 @@ FinPlay에는 로컬 `planner → implementer → tester → reviewer` 루프와
 | [`ai/context-router.md`](../context-router.md) | 작업 유형별 최소 문서 라우팅 | 유지. 채택 후 별도 이슈에서 이 ADR 링크 추가 |
 | [ADR-0008](0008-four-agent-roster.md) | planner·implementer·tester·reviewer 4역할 | 역할 수 유지 |
 | [ADR-0010](0010-agent-session-lifecycle.md) | implementer·tester 재개, reviewer 신규 | Standard·Strict 실행에서 유지 |
-| [ADR-0013](0013-issue-triggered-agent-harness.md) | 이슈 트리거 구현과 조건부 자동 승인 | 이슈 트리거는 재사용, 자동 승인은 채택 시 폐기 |
-| [ADR-0016](0016-review-gate-auto-fix-round.md) | 차단 사항 자동 수정 1회, 재검증, 최종 판정 | Standard에서 선택적으로 재사용. High 이상에는 별도 사람 승인 없이 수정 재개 금지 |
+| [ADR-0013](0013-issue-triggered-agent-harness.md) | 이슈 트리거 구현과 ADR-0032 채택 전 조건부 자동 승인 | 이슈 트리거는 재사용, 조건부 자동 승인은 폐기 |
+| [ADR-0016](0016-review-gate-auto-fix-round.md) | 차단 사항 자동 수정 1회, 재검증, ADR-0032 채택 전 최종 판정 | Standard에서 선택적으로 재사용. 최종 승인과 봇 승인은 사용하지 않음 |
 | [ADR-0019](0019-pre-pr-failure-issue-comment.md) | PR 전후 실패 이력을 남김 | 모든 경로의 공통 실패 원칙으로 확장 |
 | [`ai/parallel-agents.md`](../parallel-agents.md) | 한 파일 한 작성자, 동일 worktree 내 단계 순차 | 유지 |
 | [`ai/harness-roadmap.md`](../harness-roadmap.md) | 이슈 트리거와 처리 시간 지표 | 처리량뿐 아니라 품질·승인·실패 지표 추가 |
-| [`.github/workflows/agent.yml`](../../.github/workflows/agent.yml) | 방향 제시, 구현, 빌드, 리뷰, 1회 수정, 조건부 승인 | 같은 workflow 안에 얇은 route gate를 두고 중복 단계는 제거 |
+| [`.github/workflows/agent.yml`](../../.github/workflows/agent.yml) | 방향 제시, 구현, 빌드, 리뷰, 1회 수정, 조건부 승인 제거 | 같은 workflow 안에 얇은 route gate를 두고 중복 단계는 제거 |
 | [`.codex/agents/`](../../.codex/agents)·[`.claude/agents/`](../../.claude/agents) | 도구별 4역할 정의 | 직접 수정하지 않고 공통 입출력 계약으로 감싼다 |
 | [`docs/conventions/team.md`](../../docs/conventions/team.md) | 한 Issue는 한 spec, 한 PR은 리뷰 가능한 크기 | 후속 Issue 분해 기준으로 유지 |
 
@@ -95,7 +97,7 @@ Ruflo의 [자체 intelligence audit](https://github.com/ruvnet/ruflo/blob/d55b1b
 | 시작점 | 사람의 `feature`·`review-pr` 실행 또는 `agent` 라벨·`@claude` 댓글 | 자동 후보는 Discovery, 명확한 사람 요청은 Triage-lite에서 시작 |
 | 계획 | planner가 spec을 만들거나 Actions가 방향을 제시 | planner 논리에서 근거·중복·점수·위험·예상 파일까지 구조화 |
 | 실행 경로 | 로컬 경량 경로와 고정 feature 루프, Actions 단일 장경로 | Fast·Standard·Strict 중 위험도에 맞는 최소 경로 |
-| 승인 | `@claude`가 구현 트리거, 자체 리뷰 결과로 조건부 자동 승인 가능 | 승인·이슈만 등록·보류·거절을 명시적으로 기록. 자동 승인은 없음 |
+| 승인 | `@claude`가 구현 트리거, 자체 리뷰 결과로 조건부 자동 승인 가능했던 ADR-0032 채택 전 구조 | 승인·이슈만 등록·보류·거절을 명시적으로 기록. 자동 승인은 없음 |
 | 구현 | implementer 또는 Actions의 광범위한 단일 호출 | 승인된 Issue·revision·파일 범위 안에서 implementer 1명만 작성 |
 | 검증 | tester, reviewer, 러너 build가 겹치며 책임 경계가 부분 중복 | 검증 소유자를 명시하고 위험도별 게이트만 실행 |
 | Security | 일반 리뷰 항목에 흡수되거나 명시적 소유자 없음 | 위험 신호가 있을 때만 독립 Security 스킬·게이트 호출 |
@@ -629,7 +631,7 @@ evidence:
   - source: ai/adr/0013-issue-triggered-agent-harness.md
     revision: git-sha
     collected_at: 2026-09-09T17:00:00+09:00
-    claim: 현재 조건부 자동 승인 계약
+    claim: ADR-0032 채택 전 조건부 자동 승인 계약
 scope:
   exact_paths:
     - .github/workflows/agent.yml
@@ -741,7 +743,7 @@ Discovery 지표의 분모를 다음처럼 고정한다.
 
 ### 16.1 Pilot 0: 현재 workflow의 수직 축소
 
-1. ADR 채택 직후 현재 조건부 자동 승인 스텝을 제거한다.
+1. ADR 채택 직후 조건부 자동 승인 스텝을 제거한다.
 2. 기존 `verify-actor`와 사람 요청을 그대로 사용하고 범용 승인 원장·lease는 아직 만들지 않는다.
 3. Markdown·ADR allowlist의 Fast 분기에서 Gradle build와 LLM reviewer를 생략하고 링크·범위·금지 파일·최소 Evidence만 검사한다.
 4. Standard 구현 prompt 안의 전체 build를 제거하고 runner Quality Gate가 최종 build를 한 번만 소유한다. planner·tester는 아직 새로 추가하지 않는다.
