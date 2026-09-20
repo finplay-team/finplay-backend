@@ -1,4 +1,4 @@
-# ADR-0031: 적응형 Human-in-the-loop 지속적 제품 개선 하네스
+# ADR-0032: 적응형 Human-in-the-loop 지속적 제품 개선 하네스
 
 - 상태: 제안
 - 날짜: 2026-09-09
@@ -66,7 +66,7 @@ FinPlay에는 로컬 `planner → implementer → tester → reviewer` 루프와
 | receipt-backed evolution | held-out·replay·canary·다차원 gate를 통과한 정책만 승격 | production 코드가 아니라 역할 호출·모델 tier·검색 정책 후보만 만들고 사람 승인으로 승격 |
 | token·cost 최적화 | LLM을 쓰지 않는 결정적 Tier 1의 `$0`은 구조적으로 확인. `-32%` retrieval, `-15%` booster 등은 [자체 baseline 문서에서도 미검증](https://github.com/ruvnet/ruflo/blob/d55b1bfeac2a95352df0f3fce94c105cd818f13f/plugins/ruflo-cost-tracker/docs/benchmarks/0002-baseline.md) | 절감률을 가져오지 않고 FinPlay의 eligible dispatch당 실제 token·호출·재작업 비용으로 재측정 |
 
-Ruflo의 [자체 intelligence audit](https://github.com/ruvnet/ruflo/blob/d55b1bfeac2a95352df0f3fce94c105cd818f13f/docs/reviews/intelligence-system-audit-2026-05-29.md)은 영속 학습 루프가 실제라고 확인했지만 과장되거나 연결되지 않은 성능 기능도 함께 보고했다. 릴리스 `v3.38.23`에는 강한 tier로 승격하면서 이전의 약한 model ID를 전달한 라우팅 오류가, `v3.38.21`에는 memory persistence 오류가 수정됐다. 따라서 외부 하네스의 기능 수나 홍보 수치를 신뢰 근거로 사용하지 않고, shadow·fail-closed·증거 기반 승격을 필수로 한다.
+Ruflo의 [자체 intelligence audit](https://github.com/ruvnet/ruflo/blob/d55b1bfeac2a95352df0f3fce94c105cd818f13f/docs/reviews/intelligence-system-audit-2026-05-29.md)은 영속 학습 루프가 실제라고 확인했지만 과장되거나 연결되지 않은 성능 기능도 함께 보고했다. [릴리스 `v3.38.23`](https://github.com/ruvnet/ruflo/releases/tag/v3.38.23)에는 강한 tier로 승격하면서 이전의 약한 model ID를 전달한 라우팅 오류가, [릴리스 `v3.38.21`](https://github.com/ruvnet/ruflo/releases/tag/v3.38.21)에는 memory persistence 오류가 수정됐다. 따라서 외부 하네스의 기능 수나 홍보 수치를 신뢰 근거로 사용하지 않고, shadow·fail-closed·증거 기반 승격을 필수로 한다.
 
 ## 3. 목표와 비목표
 
@@ -785,7 +785,7 @@ MVP에서 제외한다.
 
 | ID | 우선순위 | 후보 | 선행 | 수정 예상 파일 | 완료 기준 |
 | --- | --- | --- | --- | --- | --- |
-| H-01 | P0 | ADR-0031 팀 결정 반영과 기존 ADR 대체 관계 확정 | 없음 | `ai/adr/0031-*.md`, 필요 시 기존 ADR의 상태 포인터만 | 미결정 항목이 팀 결정으로 채워지고 자동 승인 정책의 정본이 하나임 |
+| H-01 | P0 | ADR-0032 팀 결정 반영과 기존 ADR 대체 관계 확정 | 없음 | `ai/adr/0032-*.md`, 필요 시 기존 ADR의 상태 포인터만 | 미결정 항목이 팀 결정으로 채워지고 자동 승인 정책의 정본이 하나임 |
 | H-07 | P0·첫 구현 | 기존 조건부 자동 승인 제거 | H-01 | `.github/workflows/agent.yml`, 관련 하네스 문서 | `gh pr review --approve`가 없고 사람 merge만 가능. 완료 전 다른 구현 Issue 착수 금지 |
 | H-13 | P0·Pilot 0 | 문서 allowlist Fast 분기 | H-07 | `.github/workflows/agent.yml`, 신규 최소 검사 fixture | Markdown·ADR 변경에서 Gradle·LLM reviewer가 생략되고 링크·범위·금지 파일 Evidence가 남음 |
 | H-14 | P0·Pilot 0 | Standard build 단일 소유권 | H-13 | `.github/workflows/agent.yml`, 구현 prompt 관련 fixture | 구현 prompt의 전체 build가 제거되고 runner build만 1회 실행됨 |
@@ -825,7 +825,7 @@ Pilot 0 순서는 `H-01 → H-07 → H-13 → H-14`로 고정한다. 지표가 �
 
 | 파일 영역 | 이슈 #557 소유권 | 후속 하네스 소유권 | 주석 정책과의 경계 |
 | --- | --- | --- | --- |
-| `ai/adr/0031-*.md` | 이번 이슈 단독 작성 | H-01만 후속 수정 | 주석 정책과 무관 |
+| `ai/adr/0032-*.md` | 이번 이슈 단독 작성 | H-01만 후속 수정 | 주석 정책과 무관 |
 | `AGENTS.md`, `CLAUDE.md` | 수정 금지 | ADR 채택 뒤 전용 동기화 Issue에서만 | 주석 정책 정본 반영이 끝난 기준으로 별도 작업 |
 | `docs/conventions/code.md` | 수정 금지 | 하네스가 소유하지 않음 | 주석 정책 작업 전용 |
 | `.codex/agents/**`, `.claude/agents/**` | 수정 금지 | H-09·H-12에서도 기본 읽기 전용. 변경은 별도 Issue | 역할 주석 규칙과 섞지 않음 |
