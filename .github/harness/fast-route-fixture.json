@@ -1,0 +1,47 @@
+{
+  "cases": [
+    {
+      "name": "markdown-only",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "expected": "FAST"
+    },
+    {
+      "name": "adr-only",
+      "files": [
+        {"status": "A", "path": "ai/adr/0032-adaptive-human-in-the-loop-product-improvement-harness.md"}
+      ],
+      "expected": "FAST"
+    },
+    {
+      "name": "mixed-source-and-markdown",
+      "files": [
+        {"status": "M", "path": "docs/example.md"},
+        {"status": "M", "path": "src/main/java/com/finplay/api/App.java"}
+      ],
+      "expected": "STANDARD"
+    },
+    {
+      "name": "policy-document",
+      "files": [
+        {"status": "M", "path": "AGENTS.md"}
+      ],
+      "expected": "STANDARD"
+    },
+    {
+      "name": "deleted-markdown",
+      "files": [
+        {"status": "D", "path": "docs/retired.md"}
+      ],
+      "expected": "STANDARD"
+    },
+    {
+      "name": "workflow-yaml",
+      "files": [
+        {"status": "M", "path": ".github/workflows/agent.yml"}
+      ],
+      "expected": "STANDARD"
+    }
+  ]
+}

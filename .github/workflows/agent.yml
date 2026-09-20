@@ -137,7 +137,7 @@ jobs:
             1. `ai/agent-mistakes.md`를 읽고, `ai/context-router.md`로 이 작업에 맞는 문서만 골라 읽어라.
             2. 최신 dev 기준으로 새 브랜치를 만들어라. 브랜치명은 docs/conventions/git.md 규칙을 따른다 — `<타입>/${{ github.event.issue.number }}-<영문-kebab-case-요약>` (이슈번호는 0으로 채우지 않는다).
             3. CLAUDE.md·docs/conventions/code.md·관련 ADR·spec을 따라 선택된 방향대로 구현해라. spec 단위 기능이면 CLAUDE.md의 /feature 절차(구현→테스트→빌드→리뷰)를 참고해 구현과 테스트를 함께 작성해라.
-            4. `./gradlew build`를 실행해 통과를 확인해라. 실패하면 원인을 고쳐서 재시도해라 — 통과 못 하면 PR을 열지 마라.
+            4. 변경 예정 파일이 Markdown·ADR allowlist만 포함하면 전체 Gradle build를 실행하지 마라. 문서 Fast gate가 경로와 링크를 검증한다. 그 외 변경은 `./gradlew build`를 실행해 통과를 확인해라. 실패하면 원인을 고쳐서 재시도해라 — 통과 못 하면 PR을 열지 마라.
             5. docs/conventions/git.md의 커밋 메시지 규칙(Conventional Commits, 한국어 제목 50자 이내)으로 커밋해라.
             6. 브랜치를 origin에 푸시하고, `dev`를 대상으로 PR을 열어라.
                - PR 제목: `<타입>: <한국어 요약> (#${{ github.event.issue.number }})`
@@ -168,9 +168,24 @@ jobs:
             "실행 로그: $RUN_URL" > /tmp/implement-failure-body.md
           gh issue comment "$ISSUE_NUMBER" --body-file /tmp/implement-failure-body.md
 
+      - name: 변경 경로 판정 및 문서 Fast Evidence
+        id: fast_route
+        if: steps.implement.outcome == 'success'
+        run: |
+          python3 .github/scripts/validate-fast-docs.py \
+            --self-test --fixture .github/harness/fast-route-fixture.json
+          python3 .github/scripts/validate-fast-docs.py \
+            --base origin/dev \
+            --result /tmp/fast-route-result.json \
+            --evidence /tmp/fast-route-evidence.md
+          ROUTE=$(jq -r '.path' /tmp/fast-route-result.json)
+          echo "path=$ROUTE" >> "$GITHUB_OUTPUT"
+          echo "evidence_path=/tmp/fast-route-evidence.md" >> "$GITHUB_OUTPUT"
+          cat /tmp/fast-route-evidence.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: 빌드 검증 (러너가 직접 실행 — 에이전트 자기 보고 아님)
         id: build
-        if: success()
+        if: success() && steps.fast_route.outputs.path != 'FAST'
         run: |
           # 앞 구현 스텝의 에이전트도 프롬프트 4번에 따라 ./gradlew build를 돌린다. 그때 뜬 Gradle 프로세스가
           # 스텝이 끝난 뒤에도 살아남아 이 검증 빌드와 같은 build/ 디렉터리를 동시에 건드리면
@@ -208,7 +223,7 @@ jobs:
         id: build_failure_issue_comment
         # 구현이 성공했는데 빌드가 실패/취소된 경우만 잡는다 — 구현이 실패했으면 build 자체가 skipped라
         # steps.implement.outcome == 'success' 조건으로 위 1번과 상호 배타를 이룬다.
-        if: always() && steps.implement.outcome == 'success' && steps.build.outcome != 'success'
+        if: always() && steps.implement.outcome == 'success' && steps.fast_route.outputs.path != 'FAST' && steps.build.outcome != 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -226,7 +241,7 @@ jobs:
         # 워크스페이스에 이미 구현 스텝이 만든 브랜치가 체크아웃돼 있으므로 그 브랜치로 정확히 찾는다.
         # 이슈번호 패턴으로 전체 open PR을 뒤지면 같은 이슈의 예전 PR을 잘못 집을 수 있다 (PR #232 리뷰).
         id: pr
-        if: success() && steps.build.outcome == 'success'
+        if: success() && (steps.build.outcome == 'success' || steps.fast_route.outputs.path == 'FAST')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -243,7 +258,9 @@ jobs:
         # steps.build.outcome == 'success' 조건으로 위 2번과 상호 배타를 이룬다.
         # pr 스텝은 NUMBER가 비면 이미 명시적으로 exit 1하므로(기존 로직, ADR-0016) 그 경우도 outcome='failure'로
         # 여기서 잡힌다 — 이슈 #311이 지목한 "steps.pr.outputs.number가 빈 값" 사례와 동일하다.
-        if: always() && steps.build.outcome == 'success' && steps.pr.outcome != 'success'
+        if: >
+          always() && steps.fast_route.outcome == 'success' && steps.pr.outcome != 'success' &&
+          (steps.fast_route.outputs.path == 'FAST' || steps.build.outcome == 'success')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -257,9 +274,19 @@ jobs:
             "실행 로그: $RUN_URL" > /tmp/pr-lookup-failure-body.md
           gh issue comment "$ISSUE_NUMBER" --body-file /tmp/pr-lookup-failure-body.md
 
+      - name: 문서 Fast Evidence를 PR에 게시
+        id: fast_evidence_comment
+        if: success() && steps.pr.outputs.number != '' && steps.fast_route.outputs.path == 'FAST'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          FAST_EVIDENCE_PATH: ${{ steps.fast_route.outputs.evidence_path }}
+        run: |
+          gh pr comment "$PR_NUMBER" --body-file "$FAST_EVIDENCE_PATH"
+
       - name: 코드 리뷰 (.claude/agents/reviewer.md 리뷰 모드 기준)
         id: review
-        if: success() && steps.pr.outputs.number != ''
+        if: success() && steps.pr.outputs.number != '' && steps.fast_route.outputs.path != 'FAST'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -298,7 +325,7 @@ jobs:
         # structured_output이 빈 문자열일 때 표현식 평가 자체가 실패해 if: 가드가 걸러주기도 전에
         # 스텝이 죽는다 (2026-08-09 실행 https://github.com/finplay-team/finplay/actions/runs/31333724172/job/93295980910 에서 실측, ADR-0016).
         # env에는 원문 문자열만 넘기고, 빈 값 체크와 JSON 파싱은 run: 스크립트 안에서 한다.
-        if: success() && steps.pr.outputs.number != ''
+        if: success() && steps.pr.outputs.number != '' && steps.fast_route.outputs.path != 'FAST'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # PR 번호도 run: 스크립트에 ${{ }}로 직접 이어붙이지 않고 env로만 전달한다 (L79 규칙, PR #293 3차 리뷰 참고 4).
@@ -327,7 +354,7 @@ jobs:
         # 조건은 == 'failure'가 아니라 != 'success'다 — 취소된 스텝의 outcome은 'failure'가 아니라 'cancelled'라
         # == 'failure'로는 타임아웃 경로가 걸리지 않는다. 이력 코멘트 4개가 모두 이 규칙을 따른다 (PR #293 5차 리뷰 권장 1).
         # 앞의 pr.outputs.number 가드가 성립하면 review는 skipped가 될 수 없어 != 'success'가 과하게 잡히지 않는다.
-        if: always() && steps.pr.outputs.number != '' && steps.review.outcome != 'success'
+        if: always() && steps.pr.outputs.number != '' && steps.fast_route.outputs.path != 'FAST' && steps.review.outcome != 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
@@ -344,7 +371,7 @@ jobs:
         # claude-code-action의 prompt(= with:)도 env와 마찬가지로 if: 가드와 무관하게 먼저 평가된다.
         # 그래서 report 본문을 다음 스텝의 prompt에 fromJSON(...)으로 직접 넣지 않고, 파일에 적어
         # 자동 수정 스텝이 파일을 읽게 한다 — 리뷰 결과 게시 스텝에서 고친 것과 같은 원칙(env는 원문 문자열만).
-        if: success() && steps.pr.outputs.number != '' && steps.review.outputs.structured_output != '' && fromJSON(steps.review.outputs.structured_output).blocking_count > 0
+        if: success() && steps.pr.outputs.number != '' && steps.fast_route.outputs.path != 'FAST' && steps.review.outputs.structured_output != '' && fromJSON(steps.review.outputs.structured_output).blocking_count > 0
         env:
           STRUCTURED_OUTPUT: ${{ steps.review.outputs.structured_output }}
         run: |
