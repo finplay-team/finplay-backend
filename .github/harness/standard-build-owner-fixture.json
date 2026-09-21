@@ -13,6 +13,10 @@
     {
       "text": "자동 수정 에이전트는 전체 build를 실행하지 않는다.",
       "count": 1
+    },
+    {
+      "text": "steps.fast_route.outcome == 'success' && steps.fast_route.outputs.path != 'FAST' && steps.review.outcome != 'success'",
+      "count": 1
     }
   ],
   "forbidden_workflow_fragments": [

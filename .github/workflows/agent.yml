@@ -392,7 +392,7 @@ jobs:
         # 조건은 == 'failure'가 아니라 != 'success'다 — 취소된 스텝의 outcome은 'failure'가 아니라 'cancelled'라
         # == 'failure'로는 타임아웃 경로가 걸리지 않는다. 이력 코멘트 4개가 모두 이 규칙을 따른다 (PR #293 5차 리뷰 권장 1).
         # 앞의 pr.outputs.number 가드가 성립하면 review는 skipped가 될 수 없어 != 'success'가 과하게 잡히지 않는다.
-        if: always() && steps.pr.outputs.number != '' && steps.fast_route.outputs.path != 'FAST' && steps.review.outcome != 'success'
+        if: always() && steps.pr.outputs.number != '' && steps.fast_route.outcome == 'success' && steps.fast_route.outputs.path != 'FAST' && steps.review.outcome != 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
