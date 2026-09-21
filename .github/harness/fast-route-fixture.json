@@ -342,6 +342,56 @@
         "docs/example.md": "- Item\n---\n[link](#item)\n"
       },
       "expected": "STANDARD"
+    },
+    {
+      "name": "html-comment-does-not-join-setext-title",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "<!-- note -->\nTitle\n---\n[link](#note-title)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "multiline-html-comment-is-standard",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "<!-- note\ncontinued -->\n[link](missing.md)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "unclosed-html-comment-is-standard",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "<!-- note\nTitle\n---\n[link](#note-title)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "html-declaration-is-standard",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "<!DOCTYPE html>\nTitle\n---\n[link](#doctype-title)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "html-processing-instruction-is-standard",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "<?pi note?>\nTitle\n---\n[link](#pi-note-title)\n"
+      },
+      "expected": "STANDARD"
     }
   ]
 }

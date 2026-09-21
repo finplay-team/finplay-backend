@@ -32,6 +32,8 @@ REFERENCE_LINK_PATTERN = re.compile(r"(?<![\\!])(?:\\\\)*(?:\[([^\]]+)\])\[([^\]
 IMAGE_REFERENCE_PATTERN = re.compile(r"(?<!\\)(?:\\\\)*!\[([^\]]+)\]\[([^\]]*)\]")
 RAW_HTML_PATTERN = re.compile(r"(?is)<\s*/?\s*[a-z][^>]*>")
 AUTOLINK_PATTERN = re.compile(r"(?is)<(?:https?://|mailto:)[^>\r\n]+>")
+HTML_SPECIAL_PATTERN = re.compile(r"(?is)<!--|<!|<\?")
+HTML_BLOCK_START_PATTERN = re.compile(r"^ {0,3}(?:<!--|<!|<\?)")
 REFERENCE_DEFINITION_PATTERN = re.compile(
     r"(?m)^[ ]{0,3}\[([^\]]+)\]:[ \t]*(?:<([^>\r\n]+)>|(\S+))"
 )
@@ -110,6 +112,7 @@ def is_heading_boundary(line: str) -> bool:
         or HEADING_PATTERN.match(line) is not None
         or BLOCKQUOTE_PATTERN.match(line) is not None
         or LIST_ITEM_PATTERN.match(line) is not None
+        or HTML_BLOCK_START_PATTERN.match(line) is not None
         or line.startswith(("    ", "\t"))
         or parse_fence(line) is not None
     )
@@ -362,7 +365,11 @@ def check_links(root: Path, entries: list[dict[str, str]]) -> list[str]:
             if key not in references:
                 references[key] = raw_target
 
-        if RAW_HTML_PATTERN.search(contents) or AUTOLINK_PATTERN.search(contents):
+        if (
+            RAW_HTML_PATTERN.search(contents)
+            or AUTOLINK_PATTERN.search(contents)
+            or HTML_SPECIAL_PATTERN.search(contents)
+        ):
             broken.append(f"{entry['path']}: unsupported raw HTML or autolink syntax")
         if unsupported_link_label(contents):
             broken.append(f"{entry['path']}: unsupported nested link label syntax")
