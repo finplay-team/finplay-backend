@@ -26,9 +26,9 @@ FORBIDDEN_EXACT = {
     "docs/conventions/team.md",
 }
 FORBIDDEN_PREFIXES = (".agents/", ".claude/", ".codex/", ".github/workflows/")
-INLINE_LINK_OPEN_PATTERN = re.compile(r"(?<![\\!])(?:\\\\)*(?:\[[^\]]*\])\(")
+INLINE_LINK_OPEN_PATTERN = re.compile(r"(?<![\\])(?:\\\\)*(?:\[[^\]]*\])\(")
 IMAGE_LINK_OPEN_PATTERN = re.compile(r"(?<!\\)(?:\\\\)*!\[[^\]]*\]\(")
-REFERENCE_LINK_PATTERN = re.compile(r"(?<![\\!])(?:\\\\)*(?:\[([^\]]+)\])\[([^\]]*)\]")
+REFERENCE_LINK_PATTERN = re.compile(r"(?<![\\])(?:\\\\)*(?:\[([^\]]+)\])\[([^\]]*)\]")
 IMAGE_REFERENCE_PATTERN = re.compile(r"(?<!\\)(?:\\\\)*!\[([^\]]+)\]\[([^\]]*)\]")
 RAW_HTML_PATTERN = re.compile(r"(?is)<\s*/?\s*[a-z][^>]*>")
 AUTOLINK_PATTERN = re.compile(r"(?is)<(?:https?://|mailto:)[^>\r\n]+>")
@@ -113,6 +113,7 @@ def is_heading_boundary(line: str) -> bool:
         or BLOCKQUOTE_PATTERN.match(line) is not None
         or LIST_ITEM_PATTERN.match(line) is not None
         or HTML_BLOCK_START_PATTERN.match(line) is not None
+        or REFERENCE_DEFINITION_PATTERN.match(line) is not None
         or line.startswith(("    ", "\t"))
         or parse_fence(line) is not None
     )

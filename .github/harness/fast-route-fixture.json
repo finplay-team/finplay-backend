@@ -129,12 +129,44 @@
       "expected": "FAST"
     },
     {
-      "name": "escaped-links-are-ignored",
+      "name": "escaped-link-openers-are-ignored",
       "files": [
         {"status": "M", "path": "docs/example.md"}
       ],
       "documents": {
-        "docs/example.md": "\\[Guide](missing.md)\n\\![Logo](missing.png)\n"
+        "docs/example.md": "\\[Guide](missing.md)\n\\![Logo]\n"
+      },
+      "expected": "FAST"
+    },
+    {
+      "name": "escaped-bang-is-regular-inline-link",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "\\![Broken](missing.md)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "escaped-bang-is-regular-reference-link",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "\\![Broken][missing]\n\n[missing]: missing.md\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "escaped-bang-valid-link-stays-fast",
+      "files": [
+        {"status": "M", "path": "docs/example.md"},
+        {"status": "M", "path": "docs/guide.md"}
+      ],
+      "documents": {
+        "docs/example.md": "\\![Guide](guide.md)\n",
+        "docs/guide.md": "# Guide\n"
       },
       "expected": "FAST"
     },
@@ -390,6 +422,17 @@
       ],
       "documents": {
         "docs/example.md": "<?pi note?>\nTitle\n---\n[link](#pi-note-title)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "reference-definition-does-not-join-setext-title",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "[guide]: guide.md\nTitle\n-----\n[link](#guide-guidemd-title)\n",
+        "docs/guide.md": "# Guide\n"
       },
       "expected": "STANDARD"
     }
