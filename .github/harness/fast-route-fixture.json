@@ -209,6 +209,79 @@
         "docs/example.md": "[Go [now]](missing.md)\n"
       },
       "expected": "STANDARD"
+    },
+    {
+      "name": "mismatched-inline-code-delimiter",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "`[Go](missing.md)``\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "multiline-raw-html-image",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "<img\n  src=\"missing.png\"\n>\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "deeply-nested-link-label",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "[Go [now [please]]](missing.md)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "escaped-link-label-bracket",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "[Go \\] now](missing.md)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "multiline-setext-wrong-fragment",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "First line\nSecond line\n---\n[link](#second-line)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "multiline-setext-combined-fragment",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "First line\nSecond line\n---\n[link](#first-line-second-line)\n"
+      },
+      "expected": "FAST"
+    },
+    {
+      "name": "symlink-document-is-standard",
+      "files": [
+        {"status": "M", "path": "docs/linked.md"}
+      ],
+      "documents": {
+        "docs/target.md": "# Target\n"
+      },
+      "symlinks": {
+        "docs/linked.md": "docs/target.md"
+      },
+      "expected": "STANDARD"
     }
   ]
 }

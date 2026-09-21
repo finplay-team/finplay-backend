@@ -30,17 +30,13 @@ INLINE_LINK_OPEN_PATTERN = re.compile(r"(?<![\\!])(?:\\\\)*(?:\[[^\]]*\])\(")
 IMAGE_LINK_OPEN_PATTERN = re.compile(r"(?<!\\)(?:\\\\)*!\[[^\]]*\]\(")
 REFERENCE_LINK_PATTERN = re.compile(r"(?<![\\!])(?:\\\\)*(?:\[([^\]]+)\])\[([^\]]*)\]")
 IMAGE_REFERENCE_PATTERN = re.compile(r"(?<!\\)(?:\\\\)*!\[([^\]]+)\]\[([^\]]*)\]")
-RAW_HTML_PATTERN = re.compile(r"(?is)<\s*/?\s*[a-z][^>\r\n]*>")
+RAW_HTML_PATTERN = re.compile(r"(?is)<\s*/?\s*[a-z][^>]*>")
 AUTOLINK_PATTERN = re.compile(r"(?is)<(?:https?://|mailto:)[^>\r\n]+>")
-NESTED_LINK_LABEL_PATTERN = re.compile(
-    r"(?<![\\!])(?:\\\\)*!?\[[^\]]*\[[^\]]*\]\](?:\(|\[)"
-)
 REFERENCE_DEFINITION_PATTERN = re.compile(
     r"(?m)^[ ]{0,3}\[([^\]]+)\]:[ \t]*(?:<([^>\r\n]+)>|(\S+))"
 )
 HEADING_PATTERN = re.compile(r"^ {0,3}#{1,6}\s+(.+?)\s*#*\s*$")
 SETEXT_PATTERN = re.compile(r"^ {0,3}(?:=+|-+)\s*$")
-INLINE_CODE_PATTERN = re.compile(r"(?P<ticks>`+)(?P<body>[\s\S]*?)(?P=ticks)")
 FENCE_PATTERN = re.compile(r"^ {0,3}(`{3,}|~{3,})([^\r\n]*)$")
 
 
@@ -137,7 +133,20 @@ def heading_slugs(path: Path) -> set[str]:
             continue
 
         if index + 1 < len(lines) and line.strip() and SETEXT_PATTERN.match(lines[index + 1]):
-            add_heading(line.strip())
+            title_lines = [line.strip()]
+            previous = index - 1
+            while previous >= 0:
+                previous_line = lines[previous]
+                if (
+                    not previous_line.strip()
+                    or SETEXT_PATTERN.match(previous_line)
+                    or HEADING_PATTERN.match(previous_line)
+                    or parse_fence(previous_line)
+                ):
+                    break
+                title_lines.insert(0, previous_line.strip())
+                previous -= 1
+            add_heading(" ".join(title_lines))
     return slugs
 
 
@@ -229,10 +238,88 @@ def without_fenced_code(contents: str) -> str:
 
 
 def without_inline_code(contents: str) -> str:
-    def replace_code_span(match: re.Match[str]) -> str:
-        return "".join("\n" if character == "\n" else " " for character in match.group(0))
+    visible = list(contents)
+    index = 0
+    while index < len(contents):
+        if contents[index] != "`":
+            index += 1
+            continue
 
-    return INLINE_CODE_PATTERN.sub(replace_code_span, contents)
+        opener_end = index + 1
+        while opener_end < len(contents) and contents[opener_end] == "`":
+            opener_end += 1
+        delimiter_length = opener_end - index
+        closer_start = opener_end
+        closer_end = None
+        while closer_start < len(contents):
+            if contents[closer_start] != "`":
+                closer_start += 1
+                continue
+            candidate_end = closer_start + 1
+            while candidate_end < len(contents) and contents[candidate_end] == "`":
+                candidate_end += 1
+            if candidate_end - closer_start == delimiter_length:
+                closer_end = candidate_end
+                break
+            closer_start = candidate_end
+
+        if closer_end is None:
+            index = opener_end
+            continue
+
+        for position in range(index, closer_end):
+            if visible[position] != "\n":
+                visible[position] = " "
+        index = closer_end
+    return "".join(visible)
+
+
+def unsupported_link_label(contents: str) -> bool:
+    def escaped(position: int) -> bool:
+        backslashes = 0
+        position -= 1
+        while position >= 0 and contents[position] == "\\":
+            backslashes += 1
+            position -= 1
+        return backslashes % 2 == 1
+
+    index = 0
+    while index < len(contents):
+        if contents[index] != "[" or escaped(index):
+            index += 1
+            continue
+
+        depth = 1
+        nested = False
+        escaped_bracket = False
+        cursor = index + 1
+        closing = None
+        while cursor < len(contents):
+            character = contents[cursor]
+            if character == "\\" and cursor + 1 < len(contents):
+                if contents[cursor + 1] in "[]":
+                    escaped_bracket = True
+                cursor += 2
+                continue
+            if character == "[":
+                depth += 1
+                nested = True
+            elif character == "]":
+                depth -= 1
+                if depth == 0:
+                    closing = cursor
+                    break
+            cursor += 1
+
+        if closing is not None:
+            following = closing + 1
+            if following < len(contents) and contents[following] in "([":
+                if nested or escaped_bracket:
+                    return True
+            index = closing + 1
+            continue
+        index += 1
+    return False
 
 
 def check_links(root: Path, entries: list[dict[str, str]]) -> list[str]:
@@ -253,7 +340,7 @@ def check_links(root: Path, entries: list[dict[str, str]]) -> list[str]:
 
         if RAW_HTML_PATTERN.search(contents) or AUTOLINK_PATTERN.search(contents):
             broken.append(f"{entry['path']}: unsupported raw HTML or autolink syntax")
-        if NESTED_LINK_LABEL_PATTERN.search(contents):
+        if unsupported_link_label(contents):
             broken.append(f"{entry['path']}: unsupported nested link label syntax")
 
         def validate_target(raw_target: str, raw_link: str) -> None:
@@ -340,6 +427,7 @@ def classify(root: Path, entries: list[dict[str, str]]) -> dict:
 def run_self_test(fixture_path: Path) -> None:
     fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
     failures = []
+    skipped = []
     for case in fixture["cases"]:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -347,12 +435,31 @@ def run_self_test(fixture_path: Path) -> None:
                 document = root / path
                 document.parent.mkdir(parents=True, exist_ok=True)
                 document.write_text(contents, encoding="utf-8")
+            symlink_failed = None
+            for path, target in case.get("symlinks", {}).items():
+                link = root / path
+                link.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    link.symlink_to(root / target)
+                except OSError as error:
+                    symlink_failed = f"{case['name']}: symlink unavailable ({error})"
+                    break
+            if symlink_failed:
+                if sys.platform == "win32":
+                    skipped.append(symlink_failed)
+                else:
+                    failures.append(symlink_failed)
+                continue
             result = classify(root, case["files"])
             if result["path"] != case["expected"]:
                 failures.append(f"{case['name']}: expected {case['expected']}, got {result['path']}")
     if failures:
         raise SystemExit("Fast route self-test failed:\n" + "\n".join(failures))
-    print(f"Fast route self-test passed ({len(fixture['cases'])} cases)")
+    passed = len(fixture["cases"]) - len(skipped)
+    message = f"Fast route self-test passed ({passed} cases)"
+    if skipped:
+        message += "; skipped: " + "; ".join(skipped)
+    print(message)
 
 
 def write_evidence(result: dict, evidence_path: Path) -> None:
