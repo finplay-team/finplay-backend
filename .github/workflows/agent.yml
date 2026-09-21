@@ -136,13 +136,13 @@ jobs:
             순서대로 진행해라 (ADR-0013 결정 순서):
             1. `ai/agent-mistakes.md`를 읽고, `ai/context-router.md`로 이 작업에 맞는 문서만 골라 읽어라.
             2. 최신 dev 기준으로 새 브랜치를 만들어라. 브랜치명은 docs/conventions/git.md 규칙을 따른다 — `<타입>/${{ github.event.issue.number }}-<영문-kebab-case-요약>` (이슈번호는 0으로 채우지 않는다).
-            3. CLAUDE.md·docs/conventions/code.md·관련 ADR·spec을 따라 선택된 방향대로 구현해라. spec 단위 기능이면 CLAUDE.md의 /feature 절차(구현→테스트→빌드→리뷰)를 참고해 구현과 테스트를 함께 작성해라.
-            4. 전체 Gradle build를 실행하지 마라. Standard 경로의 최종 build는 이 workflow의 runner Quality Gate가 유일하게 소유하고, Fast 문서 경로는 build를 생략한다. 실행한 검증만 기록해라.
+            3. CLAUDE.md·docs/conventions/code.md·관련 ADR·spec을 따라 선택된 방향대로 구현해라. spec 단위 기능이면 CLAUDE.md의 /feature 절차(구현→테스트→빌드→리뷰)를 참고하되, 아래 4번의 H-14 build 소유권 지시가 우선한다.
+            4. 전체 Gradle build(`./gradlew build`)를 실행하지 마라. Standard 경로의 최종 build는 이 workflow의 runner Quality Gate가 유일하게 소유하고, Fast 문서 경로는 build를 생략한다. 필요한 최소 컴파일·대상 검증은 실행할 수 있으며, 실행한 검증만 기록해라.
             5. docs/conventions/git.md의 커밋 메시지 규칙(Conventional Commits, 한국어 제목 50자 이내)으로 커밋해라.
             6. 브랜치를 origin에 푸시하고, `dev`를 대상으로 PR을 열어라.
                - PR 제목: `<타입>: <한국어 요약> (#${{ github.event.issue.number }})`
                - PR 본문은 `.github/PULL_REQUEST_TEMPLATE.md` 기반으로 채우고 "관련 이슈"에 `Closes #${{ github.event.issue.number }}`를 넣어라.
-               - 빌드 검증 SHA 칸에 `git rev-parse HEAD` 값을 채워라.
+               - 빌드 검증 SHA는 직접 채우지 말고, "runner Quality Gate가 최종 build를 검증한다"고 기록해라.
             7. 실행하지 않은 검증을 했다고 적지 마라.
           claude_args: |
             --model sonnet
@@ -174,6 +174,9 @@ jobs:
         run: |
           python3 .github/scripts/validate-fast-docs.py \
             --self-test --fixture .github/harness/fast-route-fixture.json
+          python3 .github/scripts/validate-standard-build-owner.py \
+            --workflow .github/workflows/agent.yml \
+            --fixture .github/harness/standard-build-owner-fixture.json
           python3 .github/scripts/validate-fast-docs.py \
             --base origin/dev \
             --result /tmp/fast-route-result.json \
@@ -427,6 +430,7 @@ jobs:
             - `[차단]`으로 표시된 항목만 반영해라. `[권장]`·`[참고]` 항목은 건드리지 마라 — 자동 수정 대상이 아니다.
             - 이미 체크아웃돼 있는 이 브랜치 위에서 그대로 수정해라. 새 브랜치를 만들지 마라.
             - CLAUDE.md·docs/conventions/code.md·관련 ADR을 따라 수정해라.
+            - 전체 Gradle build(`./gradlew build`)를 실행하지 마라. 필요한 최소 컴파일·대상 검증은 실행할 수 있지만, 최종 build는 이 workflow의 runner Quality Gate가 유일하게 소유한다.
             - 수정 후 docs/conventions/git.md의 커밋 메시지 규칙(Conventional Commits, 한국어 제목 50자 이내)으로 커밋하고, 같은 브랜치로 push해라.
             - 실행하지 않은 검증을 했다고 적지 마라.
           claude_args: |
