@@ -282,6 +282,66 @@
         "docs/linked.md": "docs/target.md"
       },
       "expected": "STANDARD"
+    },
+    {
+      "name": "escaped-backtick-link-is-checked",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "\\`[Broken](missing.md)`\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "blockquote-does-not-join-setext-title",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "> Quote\nTitle\n-----\n[link](#quote-title)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "list-does-not-join-setext-title",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "- Item\nTitle\n-----\n[link](#item-title)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "indented-code-does-not-join-setext-title",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "    Code\nTitle\n-----\n[link](#code-title)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "blockquote-line-is-not-setext-title",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "> Quote\n---\n[link](#quote)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "list-line-is-not-setext-title",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "- Item\n---\n[link](#item)\n"
+      },
+      "expected": "STANDARD"
     }
   ]
 }

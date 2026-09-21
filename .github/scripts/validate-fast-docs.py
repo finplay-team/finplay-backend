@@ -37,6 +37,9 @@ REFERENCE_DEFINITION_PATTERN = re.compile(
 )
 HEADING_PATTERN = re.compile(r"^ {0,3}#{1,6}\s+(.+?)\s*#*\s*$")
 SETEXT_PATTERN = re.compile(r"^ {0,3}(?:=+|-+)\s*$")
+THEMATIC_BREAK_PATTERN = re.compile(r"^ {0,3}(?:(?:\*\s*){3,}|(?:-\s*){3,}|(?:_\s*){3,})$")
+BLOCKQUOTE_PATTERN = re.compile(r"^ {0,3}>")
+LIST_ITEM_PATTERN = re.compile(r"^ {0,3}(?:[*+-]|\d{1,9}[.)])\s+")
 FENCE_PATTERN = re.compile(r"^ {0,3}(`{3,}|~{3,})([^\r\n]*)$")
 
 
@@ -99,6 +102,19 @@ def parse_fence(line: str) -> tuple[str, int, str] | None:
     return marker[0], len(marker), info
 
 
+def is_heading_boundary(line: str) -> bool:
+    return (
+        not line.strip()
+        or SETEXT_PATTERN.match(line) is not None
+        or THEMATIC_BREAK_PATTERN.match(line) is not None
+        or HEADING_PATTERN.match(line) is not None
+        or BLOCKQUOTE_PATTERN.match(line) is not None
+        or LIST_ITEM_PATTERN.match(line) is not None
+        or line.startswith(("    ", "\t"))
+        or parse_fence(line) is not None
+    )
+
+
 def heading_slugs(path: Path) -> set[str]:
     slugs: set[str] = set()
     counts: dict[str, int] = {}
@@ -132,17 +148,17 @@ def heading_slugs(path: Path) -> set[str]:
             add_heading(atx.group(1))
             continue
 
-        if index + 1 < len(lines) and line.strip() and SETEXT_PATTERN.match(lines[index + 1]):
+        if (
+            index + 1 < len(lines)
+            and line.strip()
+            and not is_heading_boundary(line)
+            and SETEXT_PATTERN.match(lines[index + 1])
+        ):
             title_lines = [line.strip()]
             previous = index - 1
             while previous >= 0:
                 previous_line = lines[previous]
-                if (
-                    not previous_line.strip()
-                    or SETEXT_PATTERN.match(previous_line)
-                    or HEADING_PATTERN.match(previous_line)
-                    or parse_fence(previous_line)
-                ):
+                if is_heading_boundary(previous_line):
                     break
                 title_lines.insert(0, previous_line.strip())
                 previous -= 1
@@ -238,10 +254,18 @@ def without_fenced_code(contents: str) -> str:
 
 
 def without_inline_code(contents: str) -> str:
+    def escaped(position: int) -> bool:
+        backslashes = 0
+        position -= 1
+        while position >= 0 and contents[position] == "\\":
+            backslashes += 1
+            position -= 1
+        return backslashes % 2 == 1
+
     visible = list(contents)
     index = 0
     while index < len(contents):
-        if contents[index] != "`":
+        if contents[index] != "`" or escaped(index):
             index += 1
             continue
 
