@@ -1,0 +1,440 @@
+{
+  "cases": [
+    {
+      "name": "markdown-only",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "# Example\n"
+      },
+      "expected": "FAST"
+    },
+    {
+      "name": "adr-only",
+      "files": [
+        {"status": "A", "path": "ai/adr/0032-adaptive-human-in-the-loop-product-improvement-harness.md"}
+      ],
+      "documents": {
+        "ai/adr/0032-adaptive-human-in-the-loop-product-improvement-harness.md": "# ADR\n"
+      },
+      "expected": "FAST"
+    },
+    {
+      "name": "mixed-source-and-markdown",
+      "files": [
+        {"status": "M", "path": "docs/example.md"},
+        {"status": "M", "path": "src/main/java/com/finplay/api/App.java"}
+      ],
+      "expected": "STANDARD"
+    },
+    {
+      "name": "policy-document",
+      "files": [
+        {"status": "M", "path": "AGENTS.md"}
+      ],
+      "expected": "STANDARD"
+    },
+    {
+      "name": "resource-markdown",
+      "files": [
+        {"status": "M", "path": "src/main/resources/banner.md"}
+      ],
+      "expected": "STANDARD"
+    },
+    {
+      "name": "deleted-markdown",
+      "files": [
+        {"status": "D", "path": "docs/retired.md"}
+      ],
+      "expected": "STANDARD"
+    },
+    {
+      "name": "workflow-yaml",
+      "files": [
+        {"status": "M", "path": ".github/workflows/agent.yml"}
+      ],
+      "expected": "STANDARD"
+    },
+    {
+      "name": "broken-reference-link",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "[Guide][guide]\n\n[guide]: missing.md\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "valid-reference-and-anchors",
+      "files": [
+        {"status": "M", "path": "docs/example.md"},
+        {"status": "M", "path": "docs/guide.md"}
+      ],
+      "documents": {
+        "docs/example.md": "# Intro\n\n# Intro\n\nDetails\n=======\n\n[Guide][guide]\n[Second intro][second]\n\n[guide]: guide.md#details\n[second]: #intro-1\n",
+        "docs/guide.md": "# Guide\n\nDetails\n=======\n"
+      },
+      "expected": "FAST"
+    },
+    {
+      "name": "korean-anchor",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "# 한글 제목\n\n[Title][title]\n\n[title]: #한글-제목\n"
+      },
+      "expected": "FAST"
+    },
+    {
+      "name": "code-fence-link-is-ignored",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "```md\n[Broken](missing.md)\n```\n"
+      },
+      "expected": "FAST"
+    },
+    {
+      "name": "fence-language-line-is-not-close",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "```md\n```python\n```\n[Broken](missing.md)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "missing-inline-image",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "![Logo](missing.png)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "inline-code-link-is-ignored",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "`[Guide](missing.md)`\n"
+      },
+      "expected": "FAST"
+    },
+    {
+      "name": "escaped-link-openers-are-ignored",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "\\[Guide](missing.md)\n\\![Logo]\n"
+      },
+      "expected": "FAST"
+    },
+    {
+      "name": "escaped-bang-is-regular-inline-link",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "\\![Broken](missing.md)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "escaped-bang-is-regular-reference-link",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "\\![Broken][missing]\n\n[missing]: missing.md\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "escaped-bang-valid-link-stays-fast",
+      "files": [
+        {"status": "M", "path": "docs/example.md"},
+        {"status": "M", "path": "docs/guide.md"}
+      ],
+      "documents": {
+        "docs/example.md": "\\![Guide](guide.md)\n",
+        "docs/guide.md": "# Guide\n"
+      },
+      "expected": "FAST"
+    },
+    {
+      "name": "even-escaped-links-are-links",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "\\\\[Guide](missing.md)\n\\\\![Logo](missing.png)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "unsupported-type-change-status",
+      "files": [
+        {"status": "T", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "# Example\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "balanced-parentheses-link-is-checked",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "[Go](target(foo.md).md)\n",
+        "docs/target(foo.md": "# Decoy\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "first-reference-definition-wins",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "[Guide][guide]\n\n[guide]: missing.md\n[guide]: guide.md\n",
+        "docs/guide.md": "# Guide\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "unsupported-raw-html-link",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "<a href=\"missing.md\">Guide</a>\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "unsupported-autolink",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "<https://example.com/docs>\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "unsupported-nested-link-label",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "[Go [now]](missing.md)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "mismatched-inline-code-delimiter",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "`[Go](missing.md)``\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "multiline-raw-html-image",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "<img\n  src=\"missing.png\"\n>\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "deeply-nested-link-label",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "[Go [now [please]]](missing.md)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "escaped-link-label-bracket",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "[Go \\] now](missing.md)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "multiline-setext-wrong-fragment",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "First line\nSecond line\n---\n[link](#second-line)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "multiline-setext-combined-fragment",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "First line\nSecond line\n---\n[link](#first-line-second-line)\n"
+      },
+      "expected": "FAST"
+    },
+    {
+      "name": "symlink-document-is-standard",
+      "files": [
+        {"status": "M", "path": "docs/linked.md"}
+      ],
+      "documents": {
+        "docs/target.md": "# Target\n"
+      },
+      "symlinks": {
+        "docs/linked.md": "docs/target.md"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "escaped-backtick-link-is-checked",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "\\`[Broken](missing.md)`\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "blockquote-does-not-join-setext-title",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "> Quote\nTitle\n-----\n[link](#quote-title)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "list-does-not-join-setext-title",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "- Item\nTitle\n-----\n[link](#item-title)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "indented-code-does-not-join-setext-title",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "    Code\nTitle\n-----\n[link](#code-title)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "blockquote-line-is-not-setext-title",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "> Quote\n---\n[link](#quote)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "list-line-is-not-setext-title",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "- Item\n---\n[link](#item)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "html-comment-does-not-join-setext-title",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "<!-- note -->\nTitle\n---\n[link](#note-title)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "multiline-html-comment-is-standard",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "<!-- note\ncontinued -->\n[link](missing.md)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "unclosed-html-comment-is-standard",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "<!-- note\nTitle\n---\n[link](#note-title)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "html-declaration-is-standard",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "<!DOCTYPE html>\nTitle\n---\n[link](#doctype-title)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "html-processing-instruction-is-standard",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "<?pi note?>\nTitle\n---\n[link](#pi-note-title)\n"
+      },
+      "expected": "STANDARD"
+    },
+    {
+      "name": "reference-definition-does-not-join-setext-title",
+      "files": [
+        {"status": "M", "path": "docs/example.md"}
+      ],
+      "documents": {
+        "docs/example.md": "[guide]: guide.md\nTitle\n-----\n[link](#guide-guidemd-title)\n",
+        "docs/guide.md": "# Guide\n"
+      },
+      "expected": "STANDARD"
+    }
+  ]
+}
