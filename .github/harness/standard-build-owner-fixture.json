@@ -1,6 +1,10 @@
 {
-  "build_command": "./gradlew build --no-daemon",
+  "build_command_pattern": "^\\s*\\./gradlew\\s+build\\s+--no-daemon\\s*$",
   "expected_build_command_count": 2,
+  "build_step_ids": [
+    "build",
+    "build_autofix"
+  ],
   "required_workflow_fragments": [
     {
       "text": "전체 Gradle build(`./gradlew build`)를 실행하지 마라.",
@@ -13,10 +17,6 @@
     {
       "text": "자동 수정 에이전트는 전체 build를 실행하지 않는다.",
       "count": 1
-    },
-    {
-      "text": "steps.fast_route.outcome == 'success' && steps.fast_route.outputs.path != 'FAST' && steps.review.outcome != 'success'",
-      "count": 1
     }
   ],
   "forbidden_workflow_fragments": [
@@ -26,5 +26,24 @@
   "required_step_ids": [
     "build",
     "build_autofix"
-  ]
+  ],
+  "prompt_rules": {
+    "implement": {
+      "required_fragments": [
+        "전체 Gradle build(`./gradlew build`)를 실행하지 마라."
+      ],
+      "forbidden_fragments": [
+        "git rev-parse HEAD",
+        "빌드 검증 SHA 칸에"
+      ]
+    },
+    "autofix": {
+      "required_fragments": [
+        "전체 Gradle build(`./gradlew build`)를 실행하지 마라."
+      ],
+      "forbidden_fragments": [
+        "git rev-parse HEAD"
+      ]
+    }
+  }
 }

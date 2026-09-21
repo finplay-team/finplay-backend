@@ -174,9 +174,6 @@ jobs:
         run: |
           python3 .github/scripts/validate-fast-docs.py \
             --self-test --fixture .github/harness/fast-route-fixture.json
-          python3 .github/scripts/validate-standard-build-owner.py \
-            --workflow .github/workflows/agent.yml \
-            --fixture .github/harness/standard-build-owner-fixture.json
           python3 .github/scripts/validate-fast-docs.py \
             --base origin/dev \
             --result /tmp/fast-route-result.json \
@@ -201,6 +198,29 @@ jobs:
             "" \
             "실행 로그: $RUN_URL" > /tmp/fast-route-failure-issue-body.md
           gh issue comment "$ISSUE_NUMBER" --body-file /tmp/fast-route-failure-issue-body.md
+
+      - name: H-14 Standard build ownership self-test
+        id: standard_build_owner
+        if: steps.fast_route.outcome == 'success'
+        run: |
+          python3 .github/scripts/validate-standard-build-owner.py \
+            --workflow .github/workflows/agent.yml \
+            --fixture .github/harness/standard-build-owner-fixture.json
+
+      - name: H-14 fixture 실패 이력 코멘트 — PR 생성 전
+        id: standard_build_owner_failure_issue_comment
+        if: always() && steps.implement.outcome == 'success' && steps.fast_route.outcome == 'success' && steps.standard_build_owner.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          printf '%s\n' \
+            "H-14 Standard build ownership self-test가 정상 종료되지 않았습니다." \
+            "Fast 경로 또는 Gradle build 실패로 오인하지 않고 사람이 workflow와 fixture를 확인해야 합니다." \
+            "" \
+            "실행 로그: $RUN_URL" > /tmp/standard-build-owner-failure-body.md
+          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/standard-build-owner-failure-body.md
 
       - name: 빌드 검증 (러너가 직접 실행 — 에이전트 자기 보고 아님)
         id: build
@@ -242,7 +262,7 @@ jobs:
         id: build_failure_issue_comment
         # 구현과 Fast 경로 판정이 성공했는데 Standard 빌드가 실패/취소된 경우만 잡는다 —
         # 구현 또는 Fast 판정이 실패하면 각각의 전용 이력 코멘트가 원인을 남긴다.
-        if: always() && steps.implement.outcome == 'success' && steps.fast_route.outcome == 'success' && steps.fast_route.outputs.path != 'FAST' && steps.build.outcome != 'success'
+        if: always() && steps.implement.outcome == 'success' && steps.fast_route.outcome == 'success' && steps.standard_build_owner.outcome == 'success' && steps.fast_route.outputs.path != 'FAST' && steps.build.outcome != 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
