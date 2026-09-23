@@ -91,7 +91,7 @@
 
 ## 시스템 아키텍처
 
-![시스템 아키텍처](docs/images/architecture-v2.png)
+![시스템 아키텍처](docs/images/architecture.png)
 
 EC2 종료로 DB 데이터를 잃은 실사고를 계기로 DB·캐시·이미지를 전부 관리형 서비스(RDS·ElastiCache·S3)로 분리했습니다 — **서버를 언제든 버려도 원장이 남습니다.** 네트워크·IAM·EC2·ALB·RDS·ElastiCache·S3·CloudFront는 Terraform으로 정의합니다. 이 구성은 웹 EC2 2대를 하나의 ALB 타깃 그룹에 두고, 스케줄러 EC2 1대는 ALB에 등록하지 않습니다. 프론트 정적 파일은 S3·CloudFront에서 백엔드와 독립적으로 제공하도록 구성합니다.
 
