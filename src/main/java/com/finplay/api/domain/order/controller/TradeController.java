@@ -1,4 +1,3 @@
-// 본인의 시장별 체결 내역을 커서 페이지네이션으로 조회하는 컨트롤러
 package com.finplay.api.domain.order.controller;
 
 import com.finplay.api.domain.auth.token.AuthenticatedUser;
@@ -8,6 +7,7 @@ import com.finplay.api.domain.order.service.TradeService;
 import com.finplay.api.global.exception.BusinessException;
 import com.finplay.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@Profile("!prod | web")
 @RequestMapping("/api/trades")
 @RequiredArgsConstructor
 public class TradeController {

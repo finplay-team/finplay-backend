@@ -1,4 +1,3 @@
-// OAuth 인가 시작 요청을 로그인은 302 리다이렉트로, 재인증은 인가 URI JSON으로 응답한다.
 package com.finplay.api.domain.auth.controller;
 
 import com.finplay.api.domain.auth.dto.response.OAuthReauthorizeResponse;
@@ -9,6 +8,7 @@ import com.finplay.api.domain.auth.token.AuthenticatedUser;
 import com.finplay.api.global.exception.BusinessException;
 import com.finplay.api.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@Profile("!prod | web")
 @RequestMapping("/api/auth/oauth")
 @RequiredArgsConstructor
 public class OAuthAuthorizationController {
@@ -36,7 +37,6 @@ public class OAuthAuthorizationController {
 		String provider,
 		@RequestParam(required = false)
 		String purpose) {
-		// SecurityConfig가 이미 login purpose만 공개로 통과시키지만 계약을 컨트롤러에서도 확정한다 (심층방어).
 		if (!isLoginPurpose(purpose)) {
 			throw new BusinessException(ErrorCode.VALIDATION_ERROR);
 		}

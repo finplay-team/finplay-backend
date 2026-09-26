@@ -83,10 +83,10 @@ spring:
       timeout: ${feedback.llm.timeout-seconds}s
   task:
     scheduling:
-      # 코드베이스 전체의 @Scheduled 메서드는 17개다 — 기존 5개에 뉴스·공시 수집 2개, 개장 전 배치 1개,
+      # 코드베이스 전체의 @Scheduled 메서드는 18개다 — 기존 5개에 뉴스·공시 수집 2개, 개장 전 배치 1개,
       # 코인 요약·브리핑 배치 1개, 장 마감 집단 비교 배치 1개, 코인 가격 스냅샷 기록 1개, 코인 변동 감시 1개,
       # 코인 집단 비교 배치 1개, 랭킹 재구성 배치 1개, 빗썸 연결상태 재기록 1개,
-      # 빗썸 REST ticker 폴링 1개, 주식 수집 당일 재시도 1개가 더해졌다.
+      # 빗썸 REST ticker 폴링 1개, 주식 수집 당일 재시도 1개, 빗썸 피드 리더 선출 1개가 더해졌다.
       #   기존 5   SseEmitterRegistry heartbeat · StockPriceStreamService · KisHistoricalCandleCollector
       #            StockReplaySessionScheduler · BithumbFeedSimulator
       #   신설 2   NewsCollectionService.collectNews · NewsCollectionService.collectDisclosures (spec 012 FEED-001)
@@ -100,17 +100,20 @@ spring:
       #   신설 1   BithumbFeedStatusReconciler.reconcileConnectionStatus (이슈 #299)
       #   신설 1   BithumbRestTickerPoller.pollTickers (spec 034 PRICE-REST-002, 이슈 #369)
       #   신설 1   KisHistoricalCandleCollector.retryPendingInstruments (spec 035, 이슈 #370)
-      #   합계 17
+      #   신설 1   BithumbFeedLifecycle.electLeader (이슈 #564, prod 전용)
+      #   합계 18
       # 시뮬레이터는 @Profile("!prod") + matchIfMissing=true라 별도 설정 없이 기본 활성이며, 이전 주석은 이걸
-      # 빠뜨리고 4로 세고 있었다 (이슈 #125). 위 17개가 전부 동시에 한 프로필에서 뜨는 것은 아니다 —
+      # 빠뜨리고 4로 세고 있었다 (이슈 #125). 위 18개가 전부 동시에 한 프로필에서 뜨는 것은 아니다 —
       # 시뮬레이터(BithumbFeedSimulator)와 폴러(BithumbRestTickerPoller)는 프로필이 갈리는 반면(이슈 #369),
-      # retryPendingInstruments(이슈 #370)는 프로필과 무관하게 항상 뜬다.
-      #   기본(local, crypto-real 없음) — 시뮬레이터 O, 폴러 X, 재시도 O → 16개
-      #   crypto-real                  — 시뮬레이터 X, 폴러 O, 재시도 O → 16개
-      #   prod                         — 시뮬레이터 X, 폴러 O, 재시도 O(이슈 #369부터, 이전엔 폴러가 없어 15개였다) → 16개
-      # 세 프로필 모두 실제 필요 스레드는 16개로 같다. 풀을 18로 두어 스레드 둘을 여유로 남긴다(이슈 #369
-      # 이전에도 prod는 16 대 실제 15로 여유 1개를 유지하고 있었다 — 이슈 #476로 코인 SSE 연결상태 push
-      # 스케줄이 없어지며 여유가 하나 더 늘었다).
+      # retryPendingInstruments(이슈 #370)는 프로필과 무관하게 항상 뜨고, electLeader(이슈 #564)는 prod에서만
+      # 뜬다(그 외 프로필은 BithumbFeedImmediateLifecycle이 대신하며 이 클래스는 @Scheduled가 아니다).
+      #   기본(local, crypto-real 없음) — 시뮬레이터 O, 폴러 X, 재시도 O, 리더선출 X → 16개
+      #   crypto-real                  — 시뮬레이터 X, 폴러 O, 재시도 O, 리더선출 X → 16개
+      #   prod                         — 시뮬레이터 X, 폴러 O, 재시도 O(이슈 #369부터, 이전엔 폴러가 없어 15개였다),
+      #                                   리더선출 O(이슈 #564) → 17개
+      # 세 프로필의 실제 필요 스레드 중 최댓값은 prod의 17개다. 풀을 18로 두어 스레드 하나를 여유로 남긴다(이슈
+      # #369 이전에도 prod는 16 대 실제 15로 여유 1개를 유지하고 있었다 — 이슈 #476로 코인 SSE 연결상태 push
+      # 스케줄이 없어지며 늘었던 여유 1개를 이번에 electLeader가 다시 가져갔다).
       # 풀은 앱 전역 단일 풀이라 소유 도메인과 무관하게 전부 센다 — price-snapshot-cron이 market 소유라고
       # 빼지 않는다. spec 012의 스케줄 8개(§C-1)가 이슈 #275의 crypto-peer-stats까지 전부 들어온 뒤, spec 014의
       # 랭킹 재구성 배치(이슈 #279)와 이슈 #299의 빗썸 연결상태 재기록, 이슈 #369의 REST ticker 폴링, 이슈
@@ -169,6 +172,11 @@ bithumb:
     ticker:
       connect-timeout-ms: ${BITHUMB_TICKER_CONNECT_TIMEOUT_MS:2000}
       read-timeout-ms: ${BITHUMB_TICKER_READ_TIMEOUT_MS:3000}
+    # 다중 인스턴스 환경에서 빗썸 WebSocket 연결을 인스턴스 하나만 유지하도록 하는 리더 선출 설정(이슈 #564).
+    # 이 값을 읽는 BithumbFeedLifecycle은 prod 프로필에서만 리더 선출 로직으로 동작한다.
+    leader:
+      lock-ttl-seconds: ${BITHUMB_FEED_LEADER_LOCK_TTL_SECONDS:30}
+      election-interval-ms: ${BITHUMB_FEED_LEADER_ELECTION_INTERVAL_MS:10000}
 
 # 지정가 체결 비동기 실행기(LimitOrderFillExecutorRouter, ADR-0024). enabled·partition-count·
 # queue-capacity-per-partition의 정본은 ai/adr/0024-limit-order-fill-executor.md이고, batch-size의
@@ -204,6 +212,7 @@ market:
     # ai/specs/035-stock-collector-reliability/plan.md §락 설계 세부 — 정상 실행 소요시간의 수 배 여유를
     # 두면서도 프로세스가 죽어 finally를 못 도는 최후의 경우 하루 종일 잠기지 않게 하는 값이다(COLLECT-STAB-001).
     collect-lock-ttl-seconds: 600
+    replay-session-lock-ttl-seconds: 600
     # 정규 08:10 배치 이후 당일 재시도 크론(COLLECT-STAB-003). 08:15부터 10:45까지 15분 간격 9회 — 근거는
     # ai/specs/035-stock-collector-reliability/plan.md §재시도 스케줄 근거.
     retry-cron: "0 15,30,45 8-10 * * MON-FRI"
@@ -254,6 +263,7 @@ feedback:
     # 자정이므로 매일 00:05에 전날 KST 하루치 카드를 집계한다. 00:00 정각이 아닌 것은 자정 경계의 체결·분봉이
     # 반영될 여유를 주기 위해서다(§C-1). 이 선언부에도 zone = "Asia/Seoul"이 붙는다.
     crypto-peer-stats-cron: "0 5 0 * * *" # 매일 00:05, 전날 KST 카드
+    lock-ttl-seconds: 3600 # 피드백 배치 분산 락 TTL. 최장 개장 전 배치의 LLM 누적 타임아웃보다 길게 둔다
   llm:
     model: gpt-5.4-mini
     timeout-seconds: 20

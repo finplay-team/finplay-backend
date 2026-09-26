@@ -1,4 +1,3 @@
-// 커뮤니티 게시글 댓글 생성 요청을 검증하고 인증 사용자와 함께 서비스로 전달하는 컨트롤러
 package com.finplay.api.domain.community.controller;
 
 import com.finplay.api.domain.auth.token.AuthenticatedUser;
@@ -8,6 +7,7 @@ import com.finplay.api.domain.community.service.PostCommentService;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@Profile("!prod | web")
 @RequestMapping("/api/community/posts/{postId}/comments")
 @RequiredArgsConstructor
 public class PostCommentController {

@@ -144,9 +144,23 @@ com.finplay.api
 - 응답 객체를 `mock(XxxResponse.class)`로 만들지 않는다 — 실제 데이터가 담긴 객체를 생성해 stubbing한다.
 - 테스트 전략(레벨·비중)은 ADR-0003을 따른다.
 
+## 주석 작성 원칙
+
+**Java 소스에는 주석을 작성하지 않는다.** `//`, 블록(`/* ... */`), Javadoc(`/** ... */`) 모두 대상이며 예외를 두지 않는다 — 공개 API Javadoc, 클래스·메서드 역할 설명, 비즈니스 제약·기술적 함정·트랜잭션 근거를 적는 주석도 포함한다. 주석 관련 규칙의 정본은 이 절이며, `AGENTS.md`·`CLAUDE.md`는 이 절을 참조한다 (이슈 #558, PR #556의 유지·축약·삭제 3단 기준을 대체).
+
+**이유**
+- 주석은 코드가 바뀌어도 컴파일이 그대로 통과해 조용히 낡는다. 이름·구조·테스트가 코드와 함께 검증되는 유일한 문서다.
+
+**주석 대신 쓴다**
+- 왜 이렇게 만들었는지는 커밋 메시지, 필요하면 ADR·spec에 남긴다.
+- 코드만으로 드러나지 않는 비즈니스 제약·동시성 가정은 테스트 이름과 `@DisplayName`으로 드러낸다.
+- 이름만으로 책임이 안 읽히면 주석으로 보충하지 말고 클래스·메서드·변수 이름을 더 구체적으로 바꾼다.
+
+**기존 코드**
+- 손을 대는 파일에 이미 있는 주석은 이 절 기준으로 함께 제거한다. 손대지 않는 파일까지 이 절을 근거로 일괄 정리할 필요는 없다 — 별도 정리 작업(이슈 #558)의 범위다.
+
 ## 기타
 
-- 새 소스 파일 첫 줄에 한국어 한 줄 주석으로 역할 명시.
 - 포맷은 Spotless가 **NAVER 자바 스타일**(`config/naver-eclipse-formatter.xml`)로 강제한다 (2026-07-23 팀 노션 확정, palantir에서 교체). 커밋 전 `./gradlew spotlessApply`. IDE에 [NAVER IntelliJ formatter](https://naver.github.io/hackday-conventions-java/)를 설정하면 저장 시점부터 일치한다. **IntelliJ의 `Editor > Code Style > Java > Imports` 레이아웃도 그룹 사이 빈 줄 없는 단일 그룹으로 맞춘다** — 기본 레이아웃(그룹 사이 빈 줄)로 저장·Optimize Imports를 쓰면 매번 `spotlessApply`와 어긋난다 (이슈 #525).
 - 정적 분석은 `./gradlew build`가 강제한다 — SpotBugs(버그 패턴) + JaCoCo 라인 커버리지 40% 게이트(경량 시작값, 지표 보고 상향). 오탐 제외는 `config/spotbugs/exclude.xml`에 재현 확인된 것만 추가.
 

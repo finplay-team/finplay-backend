@@ -1,4 +1,3 @@
-// 게시글과 인증 사용자를 연결해 커뮤니티 댓글을 생성하는 서비스
 package com.finplay.api.domain.community.service;
 
 import com.finplay.api.domain.auth.entity.User;
@@ -17,10 +16,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Profile("!prod | web")
 @RequiredArgsConstructor
 public class PostCommentService {
 

@@ -1,12 +1,13 @@
-// 회원 비밀번호 BCrypt 해시에 사용할 PasswordEncoder 빈을 제공하는 인증 설정
 package com.finplay.api.domain.auth.config;
 
 import com.finplay.api.domain.auth.crypto.Sha256BcryptPasswordEncoder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 @Configuration
+@Profile("!prod | web")
 public class AuthCryptoConfig {
 
 	@Bean

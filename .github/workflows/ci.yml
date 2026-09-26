@@ -77,6 +77,13 @@ jobs:
           fi
           echo "통과 — 신규 마이그레이션 전부 V$MAX_BASE보다 큽니다."
 
+      - name: H-14 Standard build ownership self-test
+        if: steps.filter.outputs.code == 'true'
+        run: |
+          python3 .github/scripts/validate-standard-build-owner.py \
+            --workflow .github/workflows/agent.yml \
+            --fixture .github/harness/standard-build-owner-fixture.json
+
       - uses: actions/setup-java@v4
         if: steps.filter.outputs.code == 'true'
         with:
@@ -86,4 +93,6 @@ jobs:
       # 시크릿 불필요 — @SpringBootTest용 더미 시크릿은 build.gradle의 Test 태스크가 직접 주입한다.
       - name: Gradle build (테스트·포맷검사·커버리지 포함)
         if: steps.filter.outputs.code == 'true'
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
         run: ./gradlew build

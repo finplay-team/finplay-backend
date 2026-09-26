@@ -1,12 +1,13 @@
-// 실제 OAuth 공급자 호출에 유한 연결·응답 timeout을 적용한 RestClient를 만든다.
 package com.finplay.api.domain.auth.oauth;
 
 import java.time.Duration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 @Component
+@Profile("!prod | web")
 public final class OAuthRestClientFactory {
 
 	private static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(5);

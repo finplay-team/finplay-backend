@@ -1,4 +1,3 @@
-// 인증 사용자의 관심목록 등록·조회·해제를 처리하는 서비스
 package com.finplay.api.domain.watchlist.service;
 
 import com.finplay.api.domain.market.entity.Instrument;
@@ -14,11 +13,13 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Profile("!prod | web")
 @RequiredArgsConstructor
 public class WatchlistService {
 

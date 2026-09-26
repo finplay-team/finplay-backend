@@ -1,4 +1,3 @@
-// OAuth state를 callback 경로에 한정된 10분 보안 쿠키로 만든다.
 package com.finplay.api.domain.auth.oauth.state;
 
 import com.finplay.api.domain.auth.oauth.OAuthProviderName;
@@ -6,12 +5,14 @@ import java.time.Duration;
 import java.util.Locale;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
 
 @Component
+@Profile("!prod | web")
 public final class OAuthStateCookieFactory {
 
 	private static final String COOKIE_NAME = "oauth_state";

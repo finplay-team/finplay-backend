@@ -1,4 +1,3 @@
-// 인증 사용자의 튜토리얼 전용 합성 시세 조회 요청을 처리하는 컨트롤러
 package com.finplay.api.domain.education.synthetic.controller;
 
 import com.finplay.api.domain.auth.token.AuthenticatedUser;
@@ -6,6 +5,7 @@ import com.finplay.api.domain.education.synthetic.dto.response.SyntheticPriceSer
 import com.finplay.api.domain.education.synthetic.service.SyntheticPriceService;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@Profile("!prod | web")
 @RequestMapping("/api/education/practice/synthetic-prices")
 @RequiredArgsConstructor
 @Validated

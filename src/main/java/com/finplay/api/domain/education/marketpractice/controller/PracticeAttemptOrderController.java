@@ -1,4 +1,3 @@
-// 인증 사용자의 현재 튜토리얼 attempt·run 주문 목록 조회를 처리하는 컨트롤러
 package com.finplay.api.domain.education.marketpractice.controller;
 
 import com.finplay.api.domain.auth.token.AuthenticatedUser;
@@ -7,6 +6,7 @@ import com.finplay.api.domain.market.entity.Market;
 import com.finplay.api.domain.order.dto.response.OrderListItemResponse;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@Profile("!prod | web")
 @RequestMapping("/api/education/practice/attempts")
 @RequiredArgsConstructor
 public class PracticeAttemptOrderController {

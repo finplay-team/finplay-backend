@@ -1,4 +1,3 @@
-// 매수 체결에 대한 투자일기 작성 요청을 처리하는 컨트롤러
 package com.finplay.api.domain.journal.controller;
 
 import com.finplay.api.domain.auth.token.AuthenticatedUser;
@@ -13,6 +12,7 @@ import com.finplay.api.domain.journal.dto.response.SellJournalUpdateResponse;
 import com.finplay.api.domain.journal.service.JournalService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@Profile("!prod | web")
 @RequestMapping("/api/trades")
 @RequiredArgsConstructor
 public class JournalController {

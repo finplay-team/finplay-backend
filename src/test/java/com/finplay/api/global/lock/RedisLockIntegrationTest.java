@@ -1,4 +1,3 @@
-// RedisLock이 실제 Redis(Testcontainers)에서 상호 배제를 하는지 — 같은 키 두 번째 획득 실패, 토큰 불일치 해제가 아무것도 지우지 않음, TTL 만료 후 재획득 — 을 검증한다 (ADR-0015 §4)
 package com.finplay.api.global.lock;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -14,13 +13,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
-// tasks.md 항목 1 — SET NX PX의 상호 배제, Lua check-then-delete의 토큰 판정, TTL 자동 만료는 mock으로 흉내 내면
-// 검증이 아니라 동어반복이 된다(CryptoWatchLockIntegrationTest가 같은 이유로 실제 Redis를 쓴다). CryptoWatchLock
-// 위에서 간접적으로 보던 것을 추출된 RedisLock 자체에 대해 직접 고정한다 — 소비자가 둘 이상이 되었으므로
-// 메커니즘의 회귀는 소비자가 아니라 여기서 잡혀야 한다.
-//
-// 키를 테스트마다 다르게 두고 @AfterEach에서 지운다 — Testcontainers Redis는 실행 전체가 공유하는 싱글턴이라
-// 잔여 키가 남으면 다음 실행의 "획득 성공" 단정이 조용히 깨진다.
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 class RedisLockIntegrationTest {
@@ -28,6 +20,9 @@ class RedisLockIntegrationTest {
 	private static final String MUTUAL_EXCLUSION_KEY = "test:redis-lock:mutual-exclusion";
 	private static final String WRONG_TOKEN_KEY = "test:redis-lock:wrong-token";
 	private static final String TTL_EXPIRY_KEY = "test:redis-lock:ttl-expiry";
+	private static final String RENEW_KEY = "test:redis-lock:renew";
+	private static final String WRITE_UNLESS_SUPERSEDED_LOCK_KEY = "test:redis-lock:write-unless-superseded";
+	private static final String WRITE_UNLESS_SUPERSEDED_TARGET_KEY = "test:redis-lock:write-unless-superseded:target";
 
 	private static final Duration LONG_ENOUGH_TTL = Duration.ofSeconds(30);
 
@@ -42,6 +37,9 @@ class RedisLockIntegrationTest {
 		redisTemplate.delete(MUTUAL_EXCLUSION_KEY);
 		redisTemplate.delete(WRONG_TOKEN_KEY);
 		redisTemplate.delete(TTL_EXPIRY_KEY);
+		redisTemplate.delete(RENEW_KEY);
+		redisTemplate.delete(WRITE_UNLESS_SUPERSEDED_LOCK_KEY);
+		redisTemplate.delete(WRITE_UNLESS_SUPERSEDED_TARGET_KEY);
 	}
 
 	@Test
@@ -61,9 +59,6 @@ class RedisLockIntegrationTest {
 		assertThat(afterUnlock.get()).isNotEqualTo(firstToken.get());
 	}
 
-	// 토큰이 다르면 지우지 않는다는 것이 Lua check-then-delete의 존재 이유다 — 이 단정이 없으면 스크립트를
-	// 무조건 DEL로 바꿔도 통과한다. NOT_HELD 반환과 "락이 그대로 남아 있다"를 함께 본다(반환값만 보면 실제로
-	// 지웠는지 알 수 없고, 남아 있는지만 보면 반환값 계약이 고정되지 않는다).
 	@Test
 	@DisplayName("토큰이 다르면 unlock이 아무것도 지우지 않고 NOT_HELD를 반환하며 락은 그대로 유지된다")
 	void unlockWithADifferentTokenDeletesNothingAndLeavesTheLockHeld() {
@@ -76,7 +71,6 @@ class RedisLockIntegrationTest {
 		assertThat(redisTemplate.opsForValue().get(WRONG_TOKEN_KEY)).isEqualTo(token.get());
 		assertThat(redisLock.tryLock(WRONG_TOKEN_KEY, LONG_ENOUGH_TTL)).isEmpty();
 
-		// 진짜 토큰으로는 여전히 풀린다 — 위 시도가 락 상태를 망가뜨리지 않았다는 뜻이다.
 		assertThat(redisLock.unlock(WRONG_TOKEN_KEY, token.get())).isEqualTo(RedisLock.UnlockResult.RELEASED);
 	}
 
@@ -91,7 +85,83 @@ class RedisLockIntegrationTest {
 		Optional<String> afterTtl = redisLock.tryLock(TTL_EXPIRY_KEY, Duration.ofSeconds(1));
 		assertThat(afterTtl).isPresent();
 
-		// 만료된 뒤 남에게 넘어간 락을 옛 토큰으로 지울 수 없다 — TTL 만료가 check-then-delete를 우회하지 않는다.
 		assertThat(redisLock.unlock(TTL_EXPIRY_KEY, token.get())).isEqualTo(RedisLock.UnlockResult.NOT_HELD);
+	}
+
+	@Test
+	@DisplayName("보유자 토큰으로 renew하면 TTL이 실제로 연장돼 원래 TTL이 지나도 락이 유지된다")
+	void renewWithTheHolderTokenExtendsTheTtlSoTheLockSurvivesPastTheOriginalTtl() throws InterruptedException {
+		Optional<String> token = redisLock.tryLock(RENEW_KEY, Duration.ofSeconds(1));
+		assertThat(token).isPresent();
+
+		Thread.sleep(600);
+		assertThat(redisLock.renew(RENEW_KEY, token.get(), Duration.ofSeconds(2))).isTrue();
+		Thread.sleep(900);
+
+		assertThat(redisTemplate.opsForValue().get(RENEW_KEY)).isEqualTo(token.get());
+		assertThat(redisLock.unlock(RENEW_KEY, token.get())).isEqualTo(RedisLock.UnlockResult.RELEASED);
+	}
+
+	@Test
+	@DisplayName("다른 토큰으로 renew하면 실패하고 원래 보유자의 락은 그대로 유지된다")
+	void renewWithAWrongTokenFailsAndLeavesTheOriginalHoldersLockUntouched() {
+		Optional<String> token = redisLock.tryLock(RENEW_KEY, LONG_ENOUGH_TTL);
+		assertThat(token).isPresent();
+
+		assertThat(redisLock.renew(RENEW_KEY, "token-that-does-not-match", LONG_ENOUGH_TTL)).isFalse();
+
+		assertThat(redisTemplate.opsForValue().get(RENEW_KEY)).isEqualTo(token.get());
+		assertThat(redisLock.unlock(RENEW_KEY, token.get())).isEqualTo(RedisLock.UnlockResult.RELEASED);
+	}
+
+	@Test
+	@DisplayName("TTL이 이미 지나 키가 사라진 뒤에는 이전 보유자의 renew도 실패한다")
+	void renewFailsAfterTheKeyHasAlreadyExpiredOnItsOwn() throws InterruptedException {
+		Optional<String> token = redisLock.tryLock(RENEW_KEY, Duration.ofSeconds(1));
+		assertThat(token).isPresent();
+
+		Thread.sleep(1500);
+
+		assertThat(redisLock.renew(RENEW_KEY, token.get(), LONG_ENOUGH_TTL)).isFalse();
+	}
+
+	@Test
+	@DisplayName("내 토큰이 락을 여전히 들고 있으면 조건부 쓰기가 성공하고 타깃 키가 갱신된다")
+	void writeUnlessSupersededWritesWhenMyTokenStillHoldsTheLock() {
+		Optional<String> token = redisLock.tryLock(WRITE_UNLESS_SUPERSEDED_LOCK_KEY, LONG_ENOUGH_TTL);
+		assertThat(token).isPresent();
+
+		assertThat(redisLock.writeUnlessSuperseded(
+			WRITE_UNLESS_SUPERSEDED_LOCK_KEY, token.get(), WRITE_UNLESS_SUPERSEDED_TARGET_KEY, "DISCONNECTED"))
+			.isTrue();
+
+		assertThat(redisTemplate.opsForValue().get(WRITE_UNLESS_SUPERSEDED_TARGET_KEY)).isEqualTo("DISCONNECTED");
+	}
+
+	@Test
+	@DisplayName("락 키가 존재하지 않으면(아무도 넘겨받지 않음) 조건부 쓰기가 성공한다")
+	void writeUnlessSupersededWritesWhenNobodyCurrentlyHoldsTheLock() {
+		assertThat(redisTemplate.hasKey(WRITE_UNLESS_SUPERSEDED_LOCK_KEY)).isFalse();
+
+		assertThat(redisLock.writeUnlessSuperseded(
+			WRITE_UNLESS_SUPERSEDED_LOCK_KEY, "stale-token", WRITE_UNLESS_SUPERSEDED_TARGET_KEY, "DISCONNECTED"))
+			.isTrue();
+
+		assertThat(redisTemplate.opsForValue().get(WRITE_UNLESS_SUPERSEDED_TARGET_KEY)).isEqualTo("DISCONNECTED");
+	}
+
+	@Test
+	@DisplayName("다른 토큰이 이미 락을 넘겨받았으면 조건부 쓰기를 건너뛰고 타깃 키를 건드리지 않는다")
+	void writeUnlessSupersededSkipsWhenAnotherTokenAlreadyTookOverTheLock() {
+		Optional<String> newLeaderToken = redisLock.tryLock(WRITE_UNLESS_SUPERSEDED_LOCK_KEY, LONG_ENOUGH_TTL);
+		assertThat(newLeaderToken).isPresent();
+		redisTemplate.opsForValue().set(WRITE_UNLESS_SUPERSEDED_TARGET_KEY, "CONNECTED");
+
+		assertThat(redisLock.writeUnlessSuperseded(
+			WRITE_UNLESS_SUPERSEDED_LOCK_KEY, "stale-previous-leader-token", WRITE_UNLESS_SUPERSEDED_TARGET_KEY,
+			"DISCONNECTED"))
+			.isFalse();
+
+		assertThat(redisTemplate.opsForValue().get(WRITE_UNLESS_SUPERSEDED_TARGET_KEY)).isEqualTo("CONNECTED");
 	}
 }

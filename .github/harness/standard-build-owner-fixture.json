@@ -1,0 +1,49 @@
+{
+  "build_command_pattern": "^\\s*\\./gradlew\\s+build\\s+--no-daemon\\s*$",
+  "expected_build_command_count": 2,
+  "build_step_ids": [
+    "build",
+    "build_autofix"
+  ],
+  "required_workflow_fragments": [
+    {
+      "text": "전체 Gradle build(`./gradlew build`)를 실행하지 마라.",
+      "count": 2
+    },
+    {
+      "text": "Standard 경로의 최종 build는 이 workflow의 runner Quality Gate가 유일하게 소유하고",
+      "count": 1
+    },
+    {
+      "text": "자동 수정 에이전트는 전체 build를 실행하지 않는다.",
+      "count": 1
+    }
+  ],
+  "forbidden_workflow_fragments": [
+    "git rev-parse HEAD",
+    "빌드 검증 SHA 칸에"
+  ],
+  "required_step_ids": [
+    "build",
+    "build_autofix"
+  ],
+  "prompt_rules": {
+    "implement": {
+      "required_fragments": [
+        "전체 Gradle build(`./gradlew build`)를 실행하지 마라."
+      ],
+      "forbidden_fragments": [
+        "git rev-parse HEAD",
+        "빌드 검증 SHA 칸에"
+      ]
+    },
+    "autofix": {
+      "required_fragments": [
+        "전체 Gradle build(`./gradlew build`)를 실행하지 마라."
+      ],
+      "forbidden_fragments": [
+        "git rev-parse HEAD"
+      ]
+    }
+  }
+}

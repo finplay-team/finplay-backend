@@ -1,4 +1,3 @@
-// 즐겨찾기 조회·등록·해제와 인메모리 락 계약(withFavoriteLock/isFavorited)의 성공·실패 분기를 검증하는 단위 테스트다.
 package com.finplay.api.domain.favorite.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -127,14 +126,6 @@ class FavoriteServiceTest {
 	@Test
 	void deleteFavoriteFailsWithFavoriteNotFoundWhenNeverCreated() {
 		assertThatThrownBy(() -> favoriteService.deleteFavorite(7L, 10L))
-			.isInstanceOf(BusinessException.class)
-			.satisfies(error -> assertThat(((BusinessException)error).getErrorCode())
-				.isEqualTo(ErrorCode.FAVORITE_NOT_FOUND));
-	}
-
-	@Test
-	void deleteFavoriteFailsWithFavoriteNotFoundWhenUserHasNoFavoritesAtAll() {
-		assertThatThrownBy(() -> favoriteService.deleteFavorite(999L, 10L))
 			.isInstanceOf(BusinessException.class)
 			.satisfies(error -> assertThat(((BusinessException)error).getErrorCode())
 				.isEqualTo(ErrorCode.FAVORITE_NOT_FOUND));

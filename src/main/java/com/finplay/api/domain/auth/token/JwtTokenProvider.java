@@ -1,4 +1,3 @@
-// 사용자 식별자와 역할을 서명된 Access·Refresh JWT 쌍으로 발급하는 컴포넌트
 package com.finplay.api.domain.auth.token;
 
 import io.jsonwebtoken.Claims;
@@ -16,9 +15,11 @@ import java.util.Optional;
 import java.util.UUID;
 import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Component
+@Profile("!prod | web")
 public final class JwtTokenProvider {
 
 	private static final String ROLE_CLAIM = "role";

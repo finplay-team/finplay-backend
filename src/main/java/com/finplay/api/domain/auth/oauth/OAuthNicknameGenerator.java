@@ -1,11 +1,12 @@
-// 신규 OAuth 회원의 식별정보를 포함하지 않는 무작위 nickname을 생성한다.
 package com.finplay.api.domain.auth.oauth;
 
 import java.security.SecureRandom;
 import java.util.HexFormat;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Component
+@Profile("!prod | web")
 public final class OAuthNicknameGenerator {
 
 	private static final String NICKNAME_PREFIX = "finplay-";

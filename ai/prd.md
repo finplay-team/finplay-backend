@@ -206,6 +206,7 @@ C-001 단계 잠금은 이 문서의 차수 이름을 기준으로 판정한다.
 | 투자일기 — 매수 회고 수정 | JOUR-002 | **완료** | PR #201 (이슈 #197). 수정 잠금 없음으로 확정 |
 | 투자일기 — 목록 조회 | JOUR-006 | **완료** | PR [#213](https://github.com/finplay-team/finplay/pull/213) (이슈 #203). `GET /api/journal`, 매수·매도 병합·커서 페이지네이션. 통합 `journalId` 미노출 |
 | 투자일기 — 상세 조회 | JOUR-005 | **제거됨** | PR [#219](https://github.com/finplay-team/finplay/pull/219) (이슈 #217)로 구현했으나, 프론트가 호출하는 코드가 없어(목록 조회 응답에 이미 본문이 포함돼 별도 상세 화면이 없음) 이슈 [#485](https://github.com/finplay-team/finplay/issues/485)로 제거했다. `GET /api/journal/buy/{buyTradeId}`·`GET /api/journal/sell/{sellTradeId}` 두 엔드포인트가 더 이상 존재하지 않는다 |
+| 스케줄러 재시작·시세 이벤트 누락 보완 재검사 | RECOVERY-001~010 | **완료** | `060-scheduler-recovery-scan`, Issue #591. `OrderRecoveryScanScheduler`가 `prod,scheduler`에서 기동 직후와 주기적으로 지정가·OCO PENDING 주문을 기존 Listener·FillService 경로로 재검사하고, `OrderRecoveryScanLock`·행 잠금·상태 조건을 재사용한다. 가격 이벤트와 재검사 경합, 재시작 복구, 조건 불충족·종료 상태 제외는 `OrderRecoveryScanSchedulerIntegrationTest`와 `OrderRecoveryScanSchedulerTest`로 검증했다. 현재 PR은 생성하지 않았으며, 구현 근거는 브랜치 커밋 `9726272f`와 위 코드·테스트 경로다 |
 | 랭킹 — 전체 랭킹 조회 | RANK-001 | **완료** | `014-ranking`, PR #196 (`GET /api/rankings`, Redis ZSET) |
 | 랭킹 — 내 랭킹 조회 | RANK-002 | **완료** | `014-ranking`, PR [#234](https://github.com/finplay-team/finplay/pull/234) (`GET /api/rankings/me`, RANK-001의 ZSET·`countStrictlyGreater` 보정 재사용) |
 | 투자 실습 — 즐겨찾기 등록·목록·해제 | EDU-PRACTICE-002 | **완료** | PR #165·#171·#173. **ADR-0012로 인메모리 저장** |

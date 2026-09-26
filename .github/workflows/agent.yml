@@ -136,13 +136,13 @@ jobs:
             순서대로 진행해라 (ADR-0013 결정 순서):
             1. `ai/agent-mistakes.md`를 읽고, `ai/context-router.md`로 이 작업에 맞는 문서만 골라 읽어라.
             2. 최신 dev 기준으로 새 브랜치를 만들어라. 브랜치명은 docs/conventions/git.md 규칙을 따른다 — `<타입>/${{ github.event.issue.number }}-<영문-kebab-case-요약>` (이슈번호는 0으로 채우지 않는다).
-            3. CLAUDE.md·docs/conventions/code.md·관련 ADR·spec을 따라 선택된 방향대로 구현해라. spec 단위 기능이면 CLAUDE.md의 /feature 절차(구현→테스트→빌드→리뷰)를 참고해 구현과 테스트를 함께 작성해라.
-            4. `./gradlew build`를 실행해 통과를 확인해라. 실패하면 원인을 고쳐서 재시도해라 — 통과 못 하면 PR을 열지 마라.
+            3. CLAUDE.md·docs/conventions/code.md·관련 ADR·spec을 따라 선택된 방향대로 구현해라. spec 단위 기능이면 CLAUDE.md의 /feature 절차(구현→테스트→빌드→리뷰)를 참고하되, 아래 4번의 H-14 build 소유권 지시가 우선한다.
+            4. 전체 Gradle build(`./gradlew build`)를 실행하지 마라. Standard 경로의 최종 build는 이 workflow의 runner Quality Gate가 유일하게 소유하고, Fast 문서 경로는 build를 생략한다. 필요한 최소 컴파일·대상 검증은 실행할 수 있으며, 실행한 검증만 기록해라.
             5. docs/conventions/git.md의 커밋 메시지 규칙(Conventional Commits, 한국어 제목 50자 이내)으로 커밋해라.
             6. 브랜치를 origin에 푸시하고, `dev`를 대상으로 PR을 열어라.
                - PR 제목: `<타입>: <한국어 요약> (#${{ github.event.issue.number }})`
                - PR 본문은 `.github/PULL_REQUEST_TEMPLATE.md` 기반으로 채우고 "관련 이슈"에 `Closes #${{ github.event.issue.number }}`를 넣어라.
-               - 빌드 검증 SHA 칸에 `git rev-parse HEAD` 값을 채워라.
+               - 빌드 검증 SHA는 직접 채우지 말고, "runner Quality Gate가 최종 build를 검증한다"고 기록해라.
             7. 실행하지 않은 검증을 했다고 적지 마라.
           claude_args: |
             --model sonnet
@@ -168,12 +168,66 @@ jobs:
             "실행 로그: $RUN_URL" > /tmp/implement-failure-body.md
           gh issue comment "$ISSUE_NUMBER" --body-file /tmp/implement-failure-body.md
 
+      - name: 변경 경로 판정 및 문서 Fast Evidence
+        id: fast_route
+        if: steps.implement.outcome == 'success'
+        run: |
+          python3 .github/scripts/validate-fast-docs.py \
+            --self-test --fixture .github/harness/fast-route-fixture.json
+          python3 .github/scripts/validate-fast-docs.py \
+            --base origin/dev \
+            --result /tmp/fast-route-result.json \
+            --evidence /tmp/fast-route-evidence.md
+          ROUTE=$(jq -r '.path' /tmp/fast-route-result.json)
+          echo "path=$ROUTE" >> "$GITHUB_OUTPUT"
+          echo "evidence_path=/tmp/fast-route-evidence.md" >> "$GITHUB_OUTPUT"
+          cat /tmp/fast-route-evidence.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 문서 Fast 경로 판정 실패 이력 코멘트 — PR 생성 전
+        id: fast_route_failure_issue_comment
+        if: always() && steps.implement.outcome == 'success' && steps.fast_route.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          FAST_ROUTE_OUTCOME: ${{ steps.fast_route.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          printf '%s\n' \
+            "문서 Fast 경로 판정이 정상 종료되지 않았습니다 (outcome: $FAST_ROUTE_OUTCOME)." \
+            "구현 에이전트가 이미 PR을 열었을 수 있으므로, 해당 PR을 자동 검증 완료로 처리하지 않고 사람이 확인해야 합니다." \
+            "" \
+            "실행 로그: $RUN_URL" > /tmp/fast-route-failure-issue-body.md
+          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/fast-route-failure-issue-body.md
+
+      - name: H-14 Standard build ownership self-test
+        id: standard_build_owner
+        if: steps.fast_route.outcome == 'success'
+        run: |
+          python3 .github/scripts/validate-standard-build-owner.py \
+            --workflow .github/workflows/agent.yml \
+            --fixture .github/harness/standard-build-owner-fixture.json
+
+      - name: H-14 fixture 실패 이력 코멘트 — PR 생성 전
+        id: standard_build_owner_failure_issue_comment
+        if: always() && steps.implement.outcome == 'success' && steps.fast_route.outcome == 'success' && steps.standard_build_owner.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          printf '%s\n' \
+            "H-14 Standard build ownership self-test가 정상 종료되지 않았습니다." \
+            "Fast 경로 또는 Gradle build 실패로 오인하지 않고 사람이 workflow와 fixture를 확인해야 합니다." \
+            "" \
+            "실행 로그: $RUN_URL" > /tmp/standard-build-owner-failure-body.md
+          gh issue comment "$ISSUE_NUMBER" --body-file /tmp/standard-build-owner-failure-body.md
+
       - name: 빌드 검증 (러너가 직접 실행 — 에이전트 자기 보고 아님)
         id: build
-        if: success()
+        if: success() && steps.fast_route.outputs.path != 'FAST'
         run: |
-          # 앞 구현 스텝의 에이전트도 프롬프트 4번에 따라 ./gradlew build를 돌린다. 그때 뜬 Gradle 프로세스가
-          # 스텝이 끝난 뒤에도 살아남아 이 검증 빌드와 같은 build/ 디렉터리를 동시에 건드리면
+          # 구현·리뷰 에이전트는 전체 build를 실행하지 않는다. 이 스텝이 Standard revision의
+          # 최종 build를 유일하게 소유하지만, 남아 있는 Gradle 프로세스가 같은 build/ 디렉터리를 동시에 건드리면
           # :test가 NoSuchFileException(build/test-results/test/binary/in-progress-results-generic.bin)으로 죽는다.
           # 2026-08-10 실행에서 실측 — job 정리 단계에 "Terminate orphan process: pid (java)"가 찍혔고
           # 컴파일 태스크는 전부 UP-TO-DATE(같은 워크스페이스에서 앞선 빌드가 돌았다는 뜻)인데
@@ -200,15 +254,15 @@ jobs:
           if pgrep -af "$GRADLE_PROCS"; then
             echo "::warning::Gradle 프로세스가 60초 대기 후에도 남아 있습니다 — 검증 빌드가 겹칠 수 있습니다"
           fi
-          # --no-daemon: 이 검증 빌드가 데몬을 남기지 않게 한다. 남기면 뒤따르는 자동 수정 에이전트의
-          # 빌드가 이번엔 반대 방향으로 같은 충돌을 일으킨다. 2026-08-09 행의 복구 절차와도 같은 방향이다.
+          # --no-daemon: 이 검증 빌드가 데몬을 남기지 않게 한다. 다음 Quality Gate 재검증과
+          # 워크스페이스를 공유하는 프로세스를 남기지 않는다.
           ./gradlew build --no-daemon
 
       - name: 빌드 검증 실패 이력 코멘트 — PR 생성 전
         id: build_failure_issue_comment
-        # 구현이 성공했는데 빌드가 실패/취소된 경우만 잡는다 — 구현이 실패했으면 build 자체가 skipped라
-        # steps.implement.outcome == 'success' 조건으로 위 1번과 상호 배타를 이룬다.
-        if: always() && steps.implement.outcome == 'success' && steps.build.outcome != 'success'
+        # 구현과 Fast 경로 판정이 성공했는데 Standard 빌드가 실패/취소된 경우만 잡는다 —
+        # 구현 또는 Fast 판정이 실패하면 각각의 전용 이력 코멘트가 원인을 남긴다.
+        if: always() && steps.implement.outcome == 'success' && steps.fast_route.outcome == 'success' && steps.standard_build_owner.outcome == 'success' && steps.fast_route.outputs.path != 'FAST' && steps.build.outcome != 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -216,7 +270,8 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           printf '%s\n' \
-            "빌드 검증이 정상 종료되지 않았습니다 (outcome: $BUILD_OUTCOME) — 구현은 끝났지만 PR이 열리지 않았습니다." \
+            "빌드 검증이 정상 종료되지 않았습니다 (outcome: $BUILD_OUTCOME)." \
+            "구현 에이전트가 이미 PR을 열었을 수 있으므로, 해당 PR을 자동 검증 완료로 처리하지 않고 사람이 확인해야 합니다." \
             "cancelled은 job 타임아웃(timeout-minutes)일 수 있습니다." \
             "" \
             "실행 로그: $RUN_URL" > /tmp/build-failure-issue-body.md
@@ -226,7 +281,9 @@ jobs:
         # 워크스페이스에 이미 구현 스텝이 만든 브랜치가 체크아웃돼 있으므로 그 브랜치로 정확히 찾는다.
         # 이슈번호 패턴으로 전체 open PR을 뒤지면 같은 이슈의 예전 PR을 잘못 집을 수 있다 (PR #232 리뷰).
         id: pr
-        if: success() && steps.build.outcome == 'success'
+        if: >
+          always() && steps.implement.outcome == 'success' &&
+          (steps.fast_route.outcome != 'success' || steps.build.outcome == 'success' || steps.fast_route.outputs.path == 'FAST')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -237,13 +294,31 @@ jobs:
           [ -n "$NUMBER" ] || { echo "::error::PR을 찾지 못했습니다"; exit 1; }
           echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
 
+      - name: 문서 Fast 경로 판정 실패 PR 코멘트
+        id: fast_route_failure_pr_comment
+        if: always() && steps.implement.outcome == 'success' && steps.fast_route.outcome != 'success' && steps.pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          FAST_ROUTE_OUTCOME: ${{ steps.fast_route.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          printf '%s\n' \
+            "문서 Fast 경로 판정이 정상 종료되지 않았습니다 (outcome: $FAST_ROUTE_OUTCOME)." \
+            "이 PR은 Fast 검증 완료로 처리되지 않았으며, 최종 리뷰 전에 사람이 실행 로그와 변경 범위를 확인해야 합니다." \
+            "" \
+            "실행 로그: $RUN_URL" > /tmp/fast-route-failure-pr-body.md
+          gh pr comment "$PR_NUMBER" --body-file /tmp/fast-route-failure-pr-body.md
+
       - name: PR 번호 조회 실패 이력 코멘트
         id: pr_lookup_failure_comment
         # 빌드가 성공했는데 PR 조회가 실패/취소된 경우만 잡는다 — 빌드가 실패했으면 pr 자체가 skipped라
         # steps.build.outcome == 'success' 조건으로 위 2번과 상호 배타를 이룬다.
         # pr 스텝은 NUMBER가 비면 이미 명시적으로 exit 1하므로(기존 로직, ADR-0016) 그 경우도 outcome='failure'로
         # 여기서 잡힌다 — 이슈 #311이 지목한 "steps.pr.outputs.number가 빈 값" 사례와 동일하다.
-        if: always() && steps.build.outcome == 'success' && steps.pr.outcome != 'success'
+        if: >
+          always() && steps.fast_route.outcome == 'success' && steps.pr.outcome != 'success' &&
+          (steps.fast_route.outputs.path == 'FAST' || steps.build.outcome == 'success')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -257,9 +332,19 @@ jobs:
             "실행 로그: $RUN_URL" > /tmp/pr-lookup-failure-body.md
           gh issue comment "$ISSUE_NUMBER" --body-file /tmp/pr-lookup-failure-body.md
 
+      - name: 문서 Fast Evidence를 PR에 게시
+        id: fast_evidence_comment
+        if: success() && steps.pr.outputs.number != '' && steps.fast_route.outputs.path == 'FAST'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          FAST_EVIDENCE_PATH: ${{ steps.fast_route.outputs.evidence_path }}
+        run: |
+          gh pr comment "$PR_NUMBER" --body-file "$FAST_EVIDENCE_PATH"
+
       - name: 코드 리뷰 (.claude/agents/reviewer.md 리뷰 모드 기준)
         id: review
-        if: success() && steps.pr.outputs.number != ''
+        if: success() && steps.pr.outputs.number != '' && steps.fast_route.outputs.path != 'FAST'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -298,7 +383,7 @@ jobs:
         # structured_output이 빈 문자열일 때 표현식 평가 자체가 실패해 if: 가드가 걸러주기도 전에
         # 스텝이 죽는다 (2026-08-09 실행 https://github.com/finplay-team/finplay/actions/runs/31333724172/job/93295980910 에서 실측, ADR-0016).
         # env에는 원문 문자열만 넘기고, 빈 값 체크와 JSON 파싱은 run: 스크립트 안에서 한다.
-        if: success() && steps.pr.outputs.number != ''
+        if: success() && steps.pr.outputs.number != '' && steps.fast_route.outputs.path != 'FAST'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # PR 번호도 run: 스크립트에 ${{ }}로 직접 이어붙이지 않고 env로만 전달한다 (L79 규칙, PR #293 3차 리뷰 참고 4).
@@ -327,7 +412,7 @@ jobs:
         # 조건은 == 'failure'가 아니라 != 'success'다 — 취소된 스텝의 outcome은 'failure'가 아니라 'cancelled'라
         # == 'failure'로는 타임아웃 경로가 걸리지 않는다. 이력 코멘트 4개가 모두 이 규칙을 따른다 (PR #293 5차 리뷰 권장 1).
         # 앞의 pr.outputs.number 가드가 성립하면 review는 skipped가 될 수 없어 != 'success'가 과하게 잡히지 않는다.
-        if: always() && steps.pr.outputs.number != '' && steps.review.outcome != 'success'
+        if: always() && steps.pr.outputs.number != '' && steps.fast_route.outcome == 'success' && steps.fast_route.outputs.path != 'FAST' && steps.review.outcome != 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
@@ -344,7 +429,7 @@ jobs:
         # claude-code-action의 prompt(= with:)도 env와 마찬가지로 if: 가드와 무관하게 먼저 평가된다.
         # 그래서 report 본문을 다음 스텝의 prompt에 fromJSON(...)으로 직접 넣지 않고, 파일에 적어
         # 자동 수정 스텝이 파일을 읽게 한다 — 리뷰 결과 게시 스텝에서 고친 것과 같은 원칙(env는 원문 문자열만).
-        if: success() && steps.pr.outputs.number != '' && steps.review.outputs.structured_output != '' && fromJSON(steps.review.outputs.structured_output).blocking_count > 0
+        if: success() && steps.pr.outputs.number != '' && steps.fast_route.outputs.path != 'FAST' && steps.review.outputs.structured_output != '' && fromJSON(steps.review.outputs.structured_output).blocking_count > 0
         env:
           STRUCTURED_OUTPUT: ${{ steps.review.outputs.structured_output }}
         run: |
@@ -365,6 +450,7 @@ jobs:
             - `[차단]`으로 표시된 항목만 반영해라. `[권장]`·`[참고]` 항목은 건드리지 마라 — 자동 수정 대상이 아니다.
             - 이미 체크아웃돼 있는 이 브랜치 위에서 그대로 수정해라. 새 브랜치를 만들지 마라.
             - CLAUDE.md·docs/conventions/code.md·관련 ADR을 따라 수정해라.
+            - 전체 Gradle build(`./gradlew build`)를 실행하지 마라. 필요한 최소 컴파일·대상 검증은 실행할 수 있지만, 최종 build는 이 workflow의 runner Quality Gate가 유일하게 소유한다.
             - 수정 후 docs/conventions/git.md의 커밋 메시지 규칙(Conventional Commits, 한국어 제목 50자 이내)으로 커밋하고, 같은 브랜치로 push해라.
             - 실행하지 않은 검증을 했다고 적지 마라.
           claude_args: |
@@ -375,11 +461,11 @@ jobs:
         id: autofix_call_failure_comment
         # autofix_build_failure_comment와 같은 패턴 — autofix 스텝 자체가 실패/취소로 끝나면(커밋·push까지
         # 못 갔을 수 있음) 그 뒤로는 아무 흔적도 안 남았다.
-        # 이력 코멘트 스텝은 judge·조건부 승인과 달리 !cancelled()가 아니라 always()를 쓴다 —
+        # 이력 코멘트 스텝은 취소된 런에서도 흔적을 남겨야 하므로 !cancelled()가 아니라 always()를 쓴다 —
         # timeout-minutes 초과는 GitHub이 job을 '취소'로 처리하는데 가장 오래 도는 스텝이 바로 이 autofix라
         # 타임아웃이 걸릴 확률이 제일 높다. !cancelled()면 그 경우 PR에 아무 흔적도 안 남아
-        # spec.md의 "코멘트 이력만 보고 왜 멈췄는지 알 수 있다"를 못 지킨다. 정보성 코멘트는 취소된 런에
-        # 붙어도 무해하지만 승인은 아니므로, 승인·판정 스텝만 !cancelled()로 막는다 (PR #293 4차 리뷰 권장 1).
+        # spec.md의 "코멘트 이력만 보고 왜 멈췄는지 알 수 있다"는 요구를 지킨다.
+        # 이력 코멘트는 정보성 기록이므로 취소된 런에도 남겨야 한다 (PR #293 4차 리뷰 권장 1).
         if: always() && steps.prep_autofix.outcome == 'success' && steps.autofix.outcome != 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -397,8 +483,8 @@ jobs:
         id: build_autofix
         if: steps.autofix.outcome == 'success'
         run: |
-          # 위 "빌드 검증" 스텝과 같은 이유·같은 방식 — 바로 앞 자동 수정 스텝의 에이전트도 빌드를 돌릴 수 있어
-          # 남은 Gradle 프로세스가 이 재검증 빌드와 워크스페이스를 다툴 수 있다.
+          # 자동 수정 에이전트는 전체 build를 실행하지 않는다. 이 스텝은 자동 수정이 push한
+          # 새 revision의 최종 build를 Quality Gate로 단독 실행한다.
           # 패턴은 한 곳에서만 정의한다 — 대기 루프와 아래 경고가 서로 어긋나지 않게 한다.
           # GradleWrapperMain은 넣지 않는다: 이 저장소의 gradlew(:213)는 -classpath가 아니라
           # `-jar gradle-wrapper.jar`로 JVM을 띄우고, -jar 실행은 메인클래스명을 argv에 노출하지 않아
@@ -415,8 +501,7 @@ jobs:
           if pgrep -af "$GRADLE_PROCS"; then
             echo "::warning::Gradle 프로세스가 60초 대기 후에도 남아 있습니다 — 검증 빌드가 겹칠 수 있습니다"
           fi
-          # --no-daemon: 이 검증 빌드가 데몬을 남기지 않게 한다. 남기면 뒤따르는 자동 수정 에이전트의
-          # 빌드가 이번엔 반대 방향으로 같은 충돌을 일으킨다. 2026-08-09 행의 복구 절차와도 같은 방향이다.
+          # --no-daemon: 이 재검증이 데몬을 남기지 않게 해 다음 단계와 워크스페이스를 공유하지 않는다.
           ./gradlew build --no-daemon
 
       - name: 재리뷰 (자동 수정 라운드, .claude/agents/reviewer.md 리뷰 모드 기준)
@@ -496,7 +581,7 @@ jobs:
         # 이미 깨진 상태라 이 스텝 자체가 도달 전에 skip된다 — 바로 위 build_autofix if:의 커스텀 조건과
         # 같은 이유로 명시적 status 함수가 필요하다 (PR #271 리뷰가 정리한 패턴, ADR-0016).
         # 이력 코멘트라 !cancelled()가 아니라 always()다 — 취소(타임아웃 포함)된 런에서도 왜 멈췄는지
-        # 흔적은 남아야 한다. 정보성 코멘트는 취소된 런에 붙어도 무해하고, 승인만 !cancelled()로 막는다
+        # 흔적은 남아야 한다. 정보성 코멘트는 취소된 런에 붙어도 무해하다
         # (PR #293 4차 리뷰 권장 1). 같은 이유로 조건도 == 'failure'가 아니라 != 'success'다 — 취소된 스텝의
         # outcome은 'cancelled'이므로 == 'failure'로는 always()를 붙인 의미가 없어진다 (5차 리뷰 권장 1).
         # 위 build_autofix가 autofix 성공 시 반드시 실행되므로 여기서 skipped가 잡힐 일은 없다.
@@ -516,7 +601,7 @@ jobs:
         # post_review_autofix는 review_autofix가 success로 끝났지만 구조화 출력이 비어 있는 경우(침묵 실패)만
         # 흡수한다. 여기는 review_autofix 호출 자체가 정상 종료되지 않은 경우다 — 두 if:는 success 여부로
         # 갈리므로 상호 배타적이라 동시에 돌지 않는다. always()를 쓰는 이유는 autofix_build_failure_comment와 같다 —
-        # 이력 코멘트는 취소(타임아웃 포함)된 런에서도 남아야 하고, 취소된 런을 막아야 하는 건 판정·승인뿐이다
+        # 이력 코멘트는 취소(타임아웃 포함)된 런에서도 남아야 한다. 이 스텝은 판정·승인이 아닌 정보성 기록이다
         # (PR #293 2차 리뷰, 4차 리뷰 권장 1 반영). 조건이 != 'success'인 이유도 같다 — 취소된 스텝의 outcome은
         # 'cancelled'이라 == 'failure'로는 타임아웃 경로가 안 걸린다 (5차 리뷰 권장 1).
         if: always() && steps.autofix.outcome == 'success' && steps.build_autofix.outcome == 'success' && steps.review_autofix.outcome != 'success'
@@ -529,82 +614,3 @@ jobs:
             "재리뷰 호출이 정상 종료되지 않았습니다 (outcome: $REVIEW_AUTOFIX_OUTCOME) — 사람이 직접 확인해야 합니다." \
             "cancelled은 job 타임아웃(timeout-minutes)일 수 있습니다." > /tmp/autofix-review-failure-body.md
           gh pr comment "$PR_NUMBER" --body-file /tmp/autofix-review-failure-body.md
-
-      - name: 최종 판정 병합 (자동 수정 라운드가 돌았으면 그 결과, 아니면 라운드 1 결과, ADR-0016)
-        id: judge
-        # always() 대신 !cancelled() — build_autofix 실패 등으로 앞쪽 success() 체인이 깨진 뒤에도 이 스텝은
-        # 반드시 돌아서 "판정 불가 = 승인 보류"로 안전하게 마무리해야 한다(autofix_build_failure_comment와 같은
-        # 이유). 다만 취소된 런에서까지 판정을 매기고 승인으로 이어질 필요는 없다 — 이력 코멘트 스텝들이
-        # always()인 것과 갈리는 지점이다(정보성 코멘트는 취소된 런에 붙어도 무해하지만 승인은 아니다,
-        # PR #293 3차 리뷰 참고 1 · 4차 리뷰 권장 1).
-        if: "!cancelled() && steps.pr.outputs.number != ''"
-        env:
-          AUTOFIX_OUTCOME: ${{ steps.autofix.outcome }}
-          BUILD_AUTOFIX_OUTCOME: ${{ steps.build_autofix.outcome }}
-          # env는 fromJSON(...) 없이 원문 문자열만 받는다 — 두 값 다 비어 있을 수 있어(스킵된 스텝) 그대로는 안전하다.
-          REVIEW_STRUCTURED_OUTPUT: ${{ steps.review.outputs.structured_output }}
-          REVIEW_AUTOFIX_STRUCTURED_OUTPUT: ${{ steps.review_autofix.outputs.structured_output }}
-        run: |
-          # 차단 여부를 확정할 수 없는 모든 경우(빌드 실패로 재리뷰를 못 돌림, 리뷰가 구조화 출력 없이 끝남)는
-          # blocking=1로 두어 승인하지 않는다 — "모르면 승인 안 함"이 이 스텝의 기본값이다.
-          if [ "$AUTOFIX_OUTCOME" = "success" ]; then
-            if [ "$BUILD_AUTOFIX_OUTCOME" != "success" ]; then
-              echo "final_blocking=1" >> "$GITHUB_OUTPUT"
-              echo "final_recommended=1" >> "$GITHUB_OUTPUT"
-              echo "final_reason=build_failure" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            if [ -z "$REVIEW_AUTOFIX_STRUCTURED_OUTPUT" ]; then
-              echo "final_blocking=1" >> "$GITHUB_OUTPUT"
-              echo "final_recommended=1" >> "$GITHUB_OUTPUT"
-              echo "final_reason=review_autofix_missing_output" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            FINAL_BLOCKING=$(printf '%s' "$REVIEW_AUTOFIX_STRUCTURED_OUTPUT" | jq -r '.blocking_count')
-            FINAL_RECOMMENDED=$(printf '%s' "$REVIEW_AUTOFIX_STRUCTURED_OUTPUT" | jq -r '.recommended_count')
-            echo "final_blocking=$FINAL_BLOCKING" >> "$GITHUB_OUTPUT"
-            echo "final_recommended=$FINAL_RECOMMENDED" >> "$GITHUB_OUTPUT"
-            if [ "$FINAL_BLOCKING" = "0" ]; then
-              echo "final_reason=blocking_resolved" >> "$GITHUB_OUTPUT"
-            else
-              echo "final_reason=round_exhausted" >> "$GITHUB_OUTPUT"
-            fi
-          else
-            # 자동 수정 라운드가 돌지 않았다 — 라운드 1이 이미 차단 0건이었거나, 리뷰 자체가 스킵/실패했다.
-            if [ -z "$REVIEW_STRUCTURED_OUTPUT" ]; then
-              echo "final_blocking=1" >> "$GITHUB_OUTPUT"
-              echo "final_recommended=1" >> "$GITHUB_OUTPUT"
-              echo "final_reason=review_missing_output" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            FINAL_BLOCKING=$(printf '%s' "$REVIEW_STRUCTURED_OUTPUT" | jq -r '.blocking_count')
-            FINAL_RECOMMENDED=$(printf '%s' "$REVIEW_STRUCTURED_OUTPUT" | jq -r '.recommended_count')
-            echo "final_blocking=$FINAL_BLOCKING" >> "$GITHUB_OUTPUT"
-            echo "final_recommended=$FINAL_RECOMMENDED" >> "$GITHUB_OUTPUT"
-            # "자동 수정이 아예 안 돌았다"와 "돌다가 실패했다"를 로그에서 구분한다. final_reason은 어느 if:에서도
-            # 참조되지 않는 로그 전용 값이라(round_exhausted 코멘트 스텝 제거 후 소비처 없음) 판정에 영향이 없다.
-            # 위 final_blocking·final_recommended 계산은 건드리지 않는다 (PR #293 4차 리뷰 참고 3).
-            if [ "$AUTOFIX_OUTCOME" = "failure" ] || [ "$AUTOFIX_OUTCOME" = "cancelled" ]; then
-              echo "final_reason=autofix_failed" >> "$GITHUB_OUTPUT"
-            else
-              echo "final_reason=round1_only" >> "$GITHUB_OUTPUT"
-            fi
-          fi
-
-      - name: 조건부 승인 — 차단·권장 0건일 때만 (ADR-0013·ADR-0016, 머지는 사람이 진행)
-        # PR 작성자가 claude[bot](Claude GitHub App 설치됨)이 아니라 github-actions[bot]로 폴백된 경우
-        # 이 승인 계정과 작성자가 같아져 GitHub이 422로 거부한다 — 테스트 이슈 검증 시 App 설치 여부를 함께 확인한다 (PR #232 리뷰).
-        # !cancelled() + steps.judge.outcome — judge가 !cancelled()로 도는 스텝이라 이 승인 스텝도 암묵적
-        # success()에 기대지 않고 judge가 실제로 성공했는지부터 명시적으로 확인한다(3번 항목·autofix_build_failure_comment와
-        # 같은 패턴). always()가 아니라 !cancelled()를 쓰는 이유는 취소된 런에서까지 승인이 붙는 것을 막기 위함이다
-        # (PR #293 3차 리뷰 참고 1).
-        if: >
-          !cancelled() && steps.judge.outcome == 'success' && steps.pr.outputs.number != '' &&
-          steps.judge.outputs.final_blocking == '0' &&
-          steps.judge.outputs.final_recommended == '0'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-        run: |
-          gh pr review "$PR_NUMBER" --approve \
-            -b "차단 0건 / 권장 0건 — 이슈 트리거 에이전트 리뷰 통과 (ADR-0013·ADR-0016). 머지는 사람이 직접 진행해 주세요."

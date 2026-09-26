@@ -1,9 +1,10 @@
-// StockReplaySessionScheduler의 08:40 KST 배치가 PREPARING→READY/FAILED 전환, 검증 완료 거래일 폴백 선택,
-// 이미 확정된 세션 재확정 금지, StockCandle 불변을 올바르게 처리하는지 검증하는 단위 테스트
 package com.finplay.api.domain.market.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -21,15 +22,18 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.TransactionTemplate;
 
 class StockReplaySessionSchedulerTest {
 
 	private static final ZoneId KST = ZoneId.of("Asia/Seoul");
-	// 2026-07-30(목) 08:40 KST — 직전 영업일은 주말·공휴일 없이 2026-07-29(수).
 	private static final LocalDateTime WEEKDAY_RUN_AT = LocalDateTime.of(2026, 7, 30, 8, 40, 0);
 	private static final LocalDate SERVICE_DATE = LocalDate.of(2026, 7, 30);
 	private static final LocalDate PREVIOUS_BUSINESS_DAY = LocalDate.of(2026, 7, 29);
@@ -38,15 +42,23 @@ class StockReplaySessionSchedulerTest {
 	private final StockReplaySessionRepository stockReplaySessionRepository = mock(StockReplaySessionRepository.class);
 	private final MarketDataImportRepository marketDataImportRepository = mock(MarketDataImportRepository.class);
 	private final StockCandleRepository stockCandleRepository = mock(StockCandleRepository.class);
+	private final StockReplaySessionLock stockReplaySessionLock = mock(StockReplaySessionLock.class);
+	private final TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
 
 	private static Clock fixedClock(LocalDateTime dateTime) {
 		return Clock.fixed(dateTime.atZone(KST).toInstant(), KST);
 	}
 
 	private StockReplaySessionScheduler newScheduler(Clock clock) {
+		when(stockReplaySessionLock.tryLock(any(LocalDate.class))).thenReturn(Optional.of("lock-token"));
+		doAnswer(invocation -> {
+			Consumer<TransactionStatus> action = invocation.getArgument(0);
+			action.accept(mock(TransactionStatus.class));
+			return null;
+		}).when(transactionTemplate).executeWithoutResult(any());
 		return new StockReplaySessionScheduler(
 			stockReplaySessionRepository, marketDataImportRepository, stockCandleRepository, clock,
-			new BusinessDayCalendar());
+			new BusinessDayCalendar(), stockReplaySessionLock, transactionTemplate);
 	}
 
 	private static MarketDataImport successImport(LocalDate tradingDate) {
@@ -62,8 +74,6 @@ class StockReplaySessionSchedulerTest {
 		return MarketDataImport.create("KIS", tradingDate, LocalDateTime.now(), ImportStatus.FAILED, "전체 응답 오류");
 	}
 
-	// 아직 오늘의 세션이 없을 때(최초 실행) preparing()으로 새로 만들어 orElseGet 경로를 태우고, save()에 넘긴
-	// 인스턴스를 그대로 돌려주는 저장소를 흉내낸다 — 이후 resolveReady/resolveFailed가 같은 참조를 그대로 변경한다.
 	private ArgumentCaptor<StockReplaySession> stubNoExistingSessionAndCaptureSaved() {
 		when(stockReplaySessionRepository.findByServiceDate(SERVICE_DATE)).thenReturn(Optional.empty());
 		ArgumentCaptor<StockReplaySession> captor = ArgumentCaptor.forClass(StockReplaySession.class);
@@ -86,9 +96,56 @@ class StockReplaySessionSchedulerTest {
 		assertThat(session.getSourceTradingDate()).isEqualTo(PREVIOUS_BUSINESS_DAY);
 		assertThat(session.getResolvedAt()).isEqualTo(WEEKDAY_RUN_AT);
 		assertThat(session.getFailureReason()).isNull();
+		verify(stockReplaySessionLock).unlock(SERVICE_DATE, "lock-token");
 	}
 
-	// PARTIAL_SUCCESS도 "검증 완료"로 인정한다(plan.md: SUCCESS·PARTIAL_SUCCESS 모두 받아들인 데이터).
+	@Test
+	void resolveTodaySessionReturnsWithoutRepositoryAccessWhenLockCannotBeAcquired() {
+		StockReplaySessionScheduler scheduler = newScheduler(fixedClock(WEEKDAY_RUN_AT));
+		when(stockReplaySessionLock.tryLock(SERVICE_DATE)).thenReturn(Optional.empty());
+
+		scheduler.resolveTodaySession();
+
+		verifyNoInteractions(stockReplaySessionRepository);
+		verifyNoInteractions(marketDataImportRepository);
+		verifyNoInteractions(stockCandleRepository);
+		verify(stockReplaySessionLock, never()).unlock(any(LocalDate.class), any());
+	}
+
+	@Test
+	void resolveTodaySessionUnlocksAndPropagatesWhenTransactionFails() {
+		StockReplaySessionScheduler scheduler = newScheduler(fixedClock(WEEKDAY_RUN_AT));
+		IllegalStateException failure = new IllegalStateException("transaction failed");
+		doThrow(failure).when(transactionTemplate).executeWithoutResult(any());
+
+		assertThatThrownBy(scheduler::resolveTodaySession).isSameAs(failure);
+		verify(stockReplaySessionLock).unlock(SERVICE_DATE, "lock-token");
+	}
+
+	@Test
+	void resolveTodaySessionUnlocksAfterTransactionExecutionReturns() {
+		StockReplaySessionScheduler scheduler = newScheduler(fixedClock(WEEKDAY_RUN_AT));
+		List<String> events = new ArrayList<>();
+		StockReplaySession alreadyReady = StockReplaySession.ready(
+			SERVICE_DATE, PREVIOUS_BUSINESS_DAY, WEEKDAY_RUN_AT, LocalDateTime.now());
+		when(stockReplaySessionRepository.findByServiceDate(SERVICE_DATE)).thenReturn(Optional.of(alreadyReady));
+		doAnswer(invocation -> {
+			events.add("transaction-start");
+			Consumer<TransactionStatus> action = invocation.getArgument(0);
+			action.accept(mock(TransactionStatus.class));
+			events.add("transaction-return");
+			return null;
+		}).when(transactionTemplate).executeWithoutResult(any());
+		doAnswer(invocation -> {
+			events.add("unlock");
+			return null;
+		}).when(stockReplaySessionLock).unlock(SERVICE_DATE, "lock-token");
+
+		scheduler.resolveTodaySession();
+
+		assertThat(events).containsExactly("transaction-start", "transaction-return", "unlock");
+	}
+
 	@Test
 	void resolveTodaySessionTreatsPartialSuccessImportAsValidated() {
 		ArgumentCaptor<StockReplaySession> savedSession = stubNoExistingSessionAndCaptureSaved();
@@ -105,10 +162,8 @@ class StockReplaySessionSchedulerTest {
 	@Test
 	void resolveTodaySessionFallsBackToDayBeforePreviousBusinessDayWhenPreviousIsNotYetValidated() {
 		ArgumentCaptor<StockReplaySession> savedSession = stubNoExistingSessionAndCaptureSaved();
-		// 직전 영업일(07-29)은 아직 수집 이력이 없음
 		when(marketDataImportRepository.findBySourceTradingDateOrderByCollectedAtDesc(PREVIOUS_BUSINESS_DAY))
 			.thenReturn(List.of());
-		// 그 전 영업일(07-28)은 검증 완료됨
 		when(marketDataImportRepository.findBySourceTradingDateOrderByCollectedAtDesc(DAY_BEFORE_PREVIOUS_BUSINESS_DAY))
 			.thenReturn(List.of(successImport(DAY_BEFORE_PREVIOUS_BUSINESS_DAY)));
 		when(stockCandleRepository.existsByTradingDate(DAY_BEFORE_PREVIOUS_BUSINESS_DAY)).thenReturn(true);
@@ -120,8 +175,6 @@ class StockReplaySessionSchedulerTest {
 		assertThat(session.getSourceTradingDate()).isEqualTo(DAY_BEFORE_PREVIOUS_BUSINESS_DAY);
 	}
 
-	// MarketDataImport는 SUCCESS로 남아있어도 실제 StockCandle 행이 없으면(예: 전량 롤백 등 극단 상황) 검증 완료로
-	// 보지 않는다 — isValidatedTradingDate가 두 조건을 모두 요구하는지 확인한다.
 	@Test
 	void resolveTodaySessionDoesNotTreatDayAsValidatedWhenImportSucceededButNoStockCandleExists() {
 		ArgumentCaptor<StockReplaySession> savedSession = stubNoExistingSessionAndCaptureSaved();
@@ -164,8 +217,6 @@ class StockReplaySessionSchedulerTest {
 		assertThat(savedSession.getValue().getSourceTradingDate()).isNull();
 	}
 
-	// StockReplaySessionScheduler는 StockCandle을 직접 저장·수정하지 않는다(spec.md MKT-005) — existsByTradingDate
-	// 조회 외에 어떤 쓰기 메서드도 호출하지 않는지 확인한다.
 	@Test
 	void resolveTodaySessionNeverWritesToStockCandleRepository() {
 		stubNoExistingSessionAndCaptureSaved();
@@ -181,14 +232,12 @@ class StockReplaySessionSchedulerTest {
 		verify(stockCandleRepository, never()).deleteAll();
 	}
 
-	// 이미 READY로 확정된 세션은 같은 날 배치가 다시 실행돼도 원본 거래일을 바꾸지 않는다(멱등, spec.md MKT-002).
 	@Test
 	void resolveTodaySessionDoesNotReResolveWhenSessionIsAlreadyReady() {
 		StockReplaySession alreadyReady = StockReplaySession.ready(
 			SERVICE_DATE, PREVIOUS_BUSINESS_DAY, LocalDateTime.of(2026, 7, 30, 8, 40, 0), LocalDateTime.now());
 		when(stockReplaySessionRepository.findByServiceDate(SERVICE_DATE)).thenReturn(Optional.of(alreadyReady));
 
-		// 다음 날(7/31) 재실행을 흉내내기 위해 시각을 조금 늦춰도 되지만, 같은 clock으로도 충분히 재확정 금지를 검증한다.
 		newScheduler(fixedClock(WEEKDAY_RUN_AT.plusMinutes(1))).resolveTodaySession();
 
 		assertThat(alreadyReady.getPreparationStatus()).isEqualTo(PreparationStatus.READY);
@@ -198,7 +247,6 @@ class StockReplaySessionSchedulerTest {
 		verifyNoInteractions(stockCandleRepository);
 	}
 
-	// 이미 FAILED로 확정된 세션도 마찬가지로 재확정하지 않는다.
 	@Test
 	void resolveTodaySessionDoesNotReResolveWhenSessionIsAlreadyFailed() {
 		StockReplaySession alreadyFailed = StockReplaySession.failed(
@@ -214,10 +262,8 @@ class StockReplaySessionSchedulerTest {
 		verifyNoInteractions(stockCandleRepository);
 	}
 
-	// 08:40 실행 시나리오 — Clock 제어로 주말을 건너뛴 직전 영업일 계산까지 함께 검증한다.
 	@Test
 	void resolveTodaySessionSkipsWeekendWhenResolvingPreviousBusinessDayOnMondayRun() {
-		// 2026-08-03(월) 08:40 KST 실행 — 주말(08-01 토, 08-02 일)을 건너뛰어 직전 영업일은 2026-07-31(금)이어야 한다.
 		LocalDateTime mondayRunAt = LocalDateTime.of(2026, 8, 3, 8, 40, 0);
 		LocalDate serviceDate = LocalDate.of(2026, 8, 3);
 		LocalDate expectedFriday = LocalDate.of(2026, 7, 31);
@@ -238,8 +284,6 @@ class StockReplaySessionSchedulerTest {
 
 	@Test
 	void resolveTodaySessionSkipsWeekendAndHolidayTogetherWhenResolvingPreviousBusinessDay() {
-		// 2026-08-18(화) 08:40 KST 실행 — 08-17(월, 공휴일)·08-16(일)·08-15(토, 공휴일)을 모두 건너뛰어
-		// 직전 영업일은 2026-08-14(금)이어야 한다(holidays-2026.txt에 08-15·08-17 등재).
 		LocalDateTime tuesdayRunAt = LocalDateTime.of(2026, 8, 18, 8, 40, 0);
 		LocalDate serviceDate = LocalDate.of(2026, 8, 18);
 		LocalDate expectedFriday = LocalDate.of(2026, 8, 14);

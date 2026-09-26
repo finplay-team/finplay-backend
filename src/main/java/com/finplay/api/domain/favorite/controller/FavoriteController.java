@@ -1,4 +1,3 @@
-// 인증 사용자의 즐겨찾기 조회·등록·해제 요청을 처리하는 컨트롤러
 package com.finplay.api.domain.favorite.controller;
 
 import com.finplay.api.domain.auth.token.AuthenticatedUser;
@@ -9,6 +8,7 @@ import com.finplay.api.domain.favorite.service.FavoriteService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@Profile("!prod | web")
 @RequestMapping("/api/favorites")
 @RequiredArgsConstructor
 @Validated

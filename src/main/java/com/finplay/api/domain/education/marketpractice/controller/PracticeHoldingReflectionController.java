@@ -1,4 +1,3 @@
-// 인증 사용자의 실습 3단계 자유 복기 생성(완료 확정) 요청을 처리하는 컨트롤러
 package com.finplay.api.domain.education.marketpractice.controller;
 
 import com.finplay.api.domain.auth.token.AuthenticatedUser;
@@ -7,6 +6,7 @@ import com.finplay.api.domain.education.marketpractice.dto.response.PracticeHold
 import com.finplay.api.domain.education.marketpractice.service.PracticeHoldingReflectionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@Profile("!prod | web")
 @RequestMapping("/api/education/practice/holding-reflections")
 @RequiredArgsConstructor
 public class PracticeHoldingReflectionController {

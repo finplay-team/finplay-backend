@@ -1,4 +1,3 @@
-// 운영 프로필에서 카카오 OAuth 인가 URI를 생성한다.
 package com.finplay.api.domain.auth.oauth.provider;
 
 import com.finplay.api.domain.auth.oauth.OAuthProviderName;
@@ -10,7 +9,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
 
 @Component
-@Profile({"prod", "oauth-real"})
+@Profile("(prod & web) | (!prod & oauth-real)")
 public final class KakaoOAuthAuthorizationProvider implements OAuthAuthorizationProvider {
 
 	private static final String AUTHORIZATION_ENDPOINT = "https://kauth.kakao.com/oauth/authorize";

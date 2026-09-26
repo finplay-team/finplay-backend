@@ -1,4 +1,3 @@
-// RedisLock이 Redis 응답을 UnlockResult 세 값으로 정확히 가르는지, 장애와 토큰 불일치를 섞지 않는지 mock으로 검증하는 단위 테스트다.
 package com.finplay.api.global.lock;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -6,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import ch.qos.logback.classic.Level;
@@ -22,18 +22,6 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.script.RedisScript;
 
-/**
- * {@code RedisLockIntegrationTest}(실 Redis)가 상호 배제·Lua 원자성·TTL 만료를 맡고, 여기서는 <b>Redis 응답을
- * 세 결과값으로 가르는 분기</b>만 본다 — 실 Redis로는 장애 분기에 들어갈 수 없기 때문이다.
- *
- * <p><b>왜 이 분기를 소비자가 아니라 여기서 고정하는가.</b> {@code UnlockResult}의 값이 틀려도 소비자 테스트는
- * 대부분 통과한다 — {@code CryptoWatchLockTest}는 "예외를 던지지 않는다"만 보고 조회 캐시는 반환값을 무시한다.
- * 그런데 <b>{@code REDIS_FAILURE}를 {@code NOT_HELD}로 잘못 반환하면 {@code CryptoWatchLock}이 Redis 장애를
- * "토큰 불일치 — TTL이 이미 만료돼 다른 인스턴스가 락을 새로 잡았을 수 있다"로 기록한다.</b> 그 로그가
- * ADR-0014 §후속의 TTL 재조정 근거인데, 원인이 다른 두 사건이 같은 문장으로 섞이면 그 근거가 오염되고
- * 아무 테스트도 깨지지 않는다. {@code RedisLockIntegrationTest} 헤더가 "메커니즘의 회귀는 소비자가 아니라
- * 여기서 잡혀야 한다"고 선언한 그 자리다.
- */
 class RedisLockTest {
 
 	private static final String KEY = "test:lock:key";
@@ -59,7 +47,29 @@ class RedisLockTest {
 			.thenThrow(new RuntimeException("Redis 장애"));
 	}
 
-	// ── unlock의 세 결과값 ───────────────────────────────────────────────────────────
+	@SuppressWarnings("unchecked")
+	private void givenRenewScriptReturns(Long result) {
+		when(redisTemplate.execute((RedisScript<Long>)any(RedisScript.class), anyList(), any(), any()))
+			.thenReturn(result);
+	}
+
+	@SuppressWarnings("unchecked")
+	private void givenRenewScriptThrows() {
+		when(redisTemplate.execute((RedisScript<Long>)any(RedisScript.class), anyList(), any(), any()))
+			.thenThrow(new RuntimeException("Redis 장애"));
+	}
+
+	@SuppressWarnings("unchecked")
+	private void givenWriteUnlessSupersededScriptReturns(Long result) {
+		when(redisTemplate.execute((RedisScript<Long>)any(RedisScript.class), anyList(), any(), any()))
+			.thenReturn(result);
+	}
+
+	@SuppressWarnings("unchecked")
+	private void givenWriteUnlessSupersededScriptThrows() {
+		when(redisTemplate.execute((RedisScript<Long>)any(RedisScript.class), anyList(), any(), any()))
+			.thenThrow(new RuntimeException("Redis 장애"));
+	}
 
 	@Test
 	@DisplayName("스크립트가 1을 반환하면 RELEASED다")
@@ -77,12 +87,6 @@ class RedisLockTest {
 		assertThat(redisLock.unlock(KEY, TOKEN)).isEqualTo(RedisLock.UnlockResult.NOT_HELD);
 	}
 
-	/*
-	 * 반환값 null — Redis 응답이 비었거나 드라이버가 값을 못 옮긴 경우다. `deleted != null` 가드가 없으면
-	 * `deleted == 1L`에서 Long 언박싱 NPE가 나고, 그 NPE가 catch(RuntimeException)에 잡혀 REDIS_FAILURE로
-	 * 잘못 분류된다. **반환값을 직접 단정해야 그 오분류가 드러난다** — 예외 유무로는 가드가 있으나 없으나
-	 * "예외 없이 끝난다"가 똑같다.
-	 */
 	@Test
 	@DisplayName("스크립트가 null을 반환해도 언박싱 NPE 없이 NOT_HELD다 — REDIS_FAILURE로 새지 않는다")
 	void unlockReturnsNotHeldWithoutUnboxingWhenTheScriptReturnsNull() {
@@ -93,7 +97,6 @@ class RedisLockTest {
 			.isEqualTo(RedisLock.UnlockResult.NOT_HELD);
 	}
 
-	// 이 값이 NOT_HELD로 바뀌면 CryptoWatchLock이 Redis 장애를 "TTL이 이미 만료"로 기록한다(클래스 주석 참조).
 	@Test
 	@DisplayName("Redis가 예외를 던지면 REDIS_FAILURE다 — NOT_HELD와 섞이면 TTL 재조정 근거가 오염된다")
 	void unlockReturnsRedisFailureWhenRedisThrows() {
@@ -102,8 +105,6 @@ class RedisLockTest {
 		assertThat(redisLock.unlock(KEY, TOKEN)).isEqualTo(RedisLock.UnlockResult.REDIS_FAILURE);
 	}
 
-	// 장애의 원인은 이 클래스 안에 있으므로 여기서 WARN으로 남긴다. 소비자가 남기는 "지우지 못했다"와 문장이
-	// 달라야 로그로 두 사건을 구분할 수 있다.
 	@Test
 	@DisplayName("Redis 장애로 해제에 실패하면 이 클래스가 WARN에 예외를 함께 남긴다")
 	void unlockLogsTheRedisFailureWithTheThrowable() {
@@ -118,7 +119,122 @@ class RedisLockTest {
 		});
 	}
 
-	// ── tryLock ─────────────────────────────────────────────────────────────────────
+	@Test
+	@DisplayName("스크립트가 1을 반환하면(보유자 토큰 일치) 연장에 성공한다")
+	void renewReturnsTrueWhenTheScriptExtendedTheKey() {
+		givenRenewScriptReturns(1L);
+
+		assertThat(redisLock.renew(KEY, TOKEN, Duration.ofSeconds(30))).isTrue();
+	}
+
+	@Test
+	@DisplayName("스크립트가 0을 반환하면(보유자 토큰 불일치 — TTL 만료 후 다른 보유자가 잡았을 수 있다) 연장에 실패한다")
+	void renewReturnsFalseWhenTheScriptExtendedNothing() {
+		givenRenewScriptReturns(0L);
+
+		assertThat(redisLock.renew(KEY, TOKEN, Duration.ofSeconds(30))).isFalse();
+	}
+
+	@Test
+	@DisplayName("스크립트가 null을 반환해도 언박싱 NPE 없이 연장 실패로 본다")
+	void renewReturnsFalseWithoutUnboxingWhenTheScriptReturnsNull() {
+		givenRenewScriptReturns(null);
+
+		assertThat(redisLock.renew(KEY, TOKEN, Duration.ofSeconds(30))).isFalse();
+	}
+
+	@Test
+	@DisplayName("Redis가 예외를 던지면 연장 실패로 삼킨다")
+	void renewReturnsFalseWhenRedisThrows() {
+		givenRenewScriptThrows();
+
+		assertThat(redisLock.renew(KEY, TOKEN, Duration.ofSeconds(30))).isFalse();
+	}
+
+	@Test
+	@DisplayName("Redis 장애로 연장에 실패하면 이 클래스가 WARN에 예외를 함께 남긴다")
+	void renewLogsTheRedisFailureWithTheThrowable() {
+		givenRenewScriptThrows();
+
+		List<ILoggingEvent> logs = capturingLogs(() -> redisLock.renew(KEY, TOKEN, Duration.ofSeconds(30)));
+
+		assertThat(logs).singleElement().satisfies(event -> {
+			assertThat(event.getLevel()).isEqualTo(Level.WARN);
+			assertThat(event.getFormattedMessage()).contains("Redis 장애");
+			assertThat(event.getThrowableProxy()).isNotNull();
+		});
+	}
+
+	@Test
+	@DisplayName("연장 요청은 주어진 TTL을 밀리초로 스크립트에 전달한다")
+	@SuppressWarnings("unchecked")
+	void renewPassesTheGivenTtlAsMillisecondsToTheScript() {
+		givenRenewScriptReturns(1L);
+
+		redisLock.renew(KEY, TOKEN, Duration.ofSeconds(30));
+
+		verify(redisTemplate).execute(
+			(RedisScript<Long>)any(RedisScript.class), eq(List.of(KEY)), eq(TOKEN), eq("30000"));
+	}
+
+	@Test
+	@DisplayName("스크립트가 1을 반환하면(내 토큰이거나 아무도 없음) 조건부 쓰기에 성공한다")
+	void writeUnlessSupersededReturnsTrueWhenTheScriptWrites() {
+		givenWriteUnlessSupersededScriptReturns(1L);
+
+		assertThat(redisLock.writeUnlessSuperseded(KEY, TOKEN, "target:key", "target-value")).isTrue();
+	}
+
+	@Test
+	@DisplayName("스크립트가 0을 반환하면(다른 토큰이 이미 자리를 넘겨받음) 조건부 쓰기를 건너뛴다")
+	void writeUnlessSupersededReturnsFalseWhenAnotherTokenAlreadyHoldsTheKey() {
+		givenWriteUnlessSupersededScriptReturns(0L);
+
+		assertThat(redisLock.writeUnlessSuperseded(KEY, TOKEN, "target:key", "target-value")).isFalse();
+	}
+
+	@Test
+	@DisplayName("스크립트가 null을 반환해도 언박싱 NPE 없이 쓰기 실패로 본다")
+	void writeUnlessSupersededReturnsFalseWithoutUnboxingWhenTheScriptReturnsNull() {
+		givenWriteUnlessSupersededScriptReturns(null);
+
+		assertThat(redisLock.writeUnlessSuperseded(KEY, TOKEN, "target:key", "target-value")).isFalse();
+	}
+
+	@Test
+	@DisplayName("Redis가 예외를 던지면 조건부 쓰기 실패로 삼킨다")
+	void writeUnlessSupersededReturnsFalseWhenRedisThrows() {
+		givenWriteUnlessSupersededScriptThrows();
+
+		assertThat(redisLock.writeUnlessSuperseded(KEY, TOKEN, "target:key", "target-value")).isFalse();
+	}
+
+	@Test
+	@DisplayName("Redis 장애로 조건부 쓰기에 실패하면 이 클래스가 WARN에 예외를 함께 남긴다")
+	void writeUnlessSupersededLogsTheRedisFailureWithTheThrowable() {
+		givenWriteUnlessSupersededScriptThrows();
+
+		List<ILoggingEvent> logs = capturingLogs(
+			() -> redisLock.writeUnlessSuperseded(KEY, TOKEN, "target:key", "target-value"));
+
+		assertThat(logs).singleElement().satisfies(event -> {
+			assertThat(event.getLevel()).isEqualTo(Level.WARN);
+			assertThat(event.getFormattedMessage()).contains("Redis 장애");
+			assertThat(event.getThrowableProxy()).isNotNull();
+		});
+	}
+
+	@Test
+	@DisplayName("조건부 쓰기는 원본 락 키·타깃 키를 KEYS로, 토큰·타깃 값을 ARGV로 스크립트에 전달한다")
+	@SuppressWarnings("unchecked")
+	void writeUnlessSupersededPassesLockKeyTargetKeyTokenAndTargetValueToTheScript() {
+		givenWriteUnlessSupersededScriptReturns(1L);
+
+		redisLock.writeUnlessSuperseded(KEY, TOKEN, "target:key", "target-value");
+
+		verify(redisTemplate).execute(
+			(RedisScript<Long>)any(RedisScript.class), eq(List.of(KEY, "target:key")), eq(TOKEN), eq("target-value"));
+	}
 
 	@Test
 	@DisplayName("setIfAbsent가 성공하면 토큰을 주고, 시도마다 토큰이 다르다")
@@ -131,7 +247,6 @@ class RedisLockTest {
 
 		assertThat(first).isPresent();
 		assertThat(second).isPresent();
-		// 토큰이 같으면 남의 락을 내 토큰으로 풀 수 있게 된다 — check-then-delete가 무의미해진다.
 		assertThat(first.get()).isNotEqualTo(second.get());
 	}
 
@@ -144,8 +259,6 @@ class RedisLockTest {
 		assertThat(redisLock.tryLock(KEY, Duration.ofSeconds(1))).isEmpty();
 	}
 
-	// 정상 경합(false)과 장애(예외)는 원인이 달라 로그 레벨이 다르지만(DEBUG/WARN) 획득 결과는 같다 —
-	// 락이 장애가 되어 호출부를 죽이지 않게 한다(ADR-0014 §실패 처리).
 	@Test
 	@DisplayName("Redis가 예외를 던져도 획득 실패로 삼킨다")
 	void tryLockReturnsEmptyWhenRedisThrows() {
@@ -156,8 +269,6 @@ class RedisLockTest {
 		assertThat(redisLock.tryLock(KEY, Duration.ofSeconds(1))).isEmpty();
 	}
 
-	// ── isHeld ──────────────────────────────────────────────────────────────────────
-
 	@Test
 	@DisplayName("키가 있으면 보유 중이고 없으면 아니다")
 	void isHeldFollowsKeyExistence() {
@@ -167,7 +278,6 @@ class RedisLockTest {
 		assertThat(redisLock.isHeld(KEY)).isFalse();
 	}
 
-	// 확인할 수 없으면 기다리게 두는 것보다 대기를 끊는 편이 낫다 — 조회 캐시의 fail-open 방향과 같다.
 	@Test
 	@DisplayName("Redis가 예외를 던지면 보유 중이 아니라고 본다")
 	void isHeldReturnsFalseWhenRedisThrows() {
@@ -176,7 +286,6 @@ class RedisLockTest {
 		assertThat(redisLock.isHeld(KEY)).isFalse();
 	}
 
-	// 로그가 유일한 외부 관찰점이라 임시 appender를 붙인다 (CryptoWatchLockTest와 같은 방식).
 	private static List<ILoggingEvent> capturingLogs(Runnable action) {
 		Logger logger = (Logger)LoggerFactory.getLogger(RedisLock.class);
 		ListAppender<ILoggingEvent> appender = new ListAppender<>();

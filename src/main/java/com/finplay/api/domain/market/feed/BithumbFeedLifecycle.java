@@ -1,38 +1,99 @@
-// 활성 BithumbFeedClient 빈의 생명주기를 애플리케이션 기동·종료에 맞추는 컴포넌트
 package com.finplay.api.domain.market.feed;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import lombok.RequiredArgsConstructor;
+import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
+@Profile("prod & scheduler")
 public class BithumbFeedLifecycle {
 
 	private final BithumbFeedClient bithumbFeedClient;
 
-	// bithumbFeedClient.start()가 던지는 예외를 여기서 삼킨다(이슈 #288) — 이 메서드는 ApplicationReadyEvent
-	// 리스너라 예외가 새면 SpringApplication.run() 자체가 실패해 시세와 무관한 API까지 전부 죽는다. 실제로
-	// FakeBithumbFeedClient.start()는 PriceStore.saveConnectionStatus로 Redis를 동기 호출하는데, Redis가
-	// 죽어 있으면 그 예외가 바로 이 지점까지 전파된다. 시세는 캐시성 의존(Redis) 하나 때문에 전체 기동이
-	// 막힐 만큼 핵심적이지 않다 — 이 기능만 저하된 채로 기동을 계속한다.
-	@EventListener(ApplicationReadyEvent.class)
-	public void startFeed() {
-		log.info("빗썸 시세 피드 시작");
-		try {
-			bithumbFeedClient.start();
-		} catch (Exception e) {
-			log.error("빗썸 시세 피드 시작 실패 — 시세 기능만 저하된 상태로 기동을 계속합니다.", e);
+	private final BithumbFeedLeaderLock bithumbFeedLeaderLock;
+
+	private final long electionIntervalMs;
+
+	private String leaderToken;
+
+	public BithumbFeedLifecycle(
+		BithumbFeedClient bithumbFeedClient,
+		BithumbFeedLeaderLock bithumbFeedLeaderLock,
+		@Value("${bithumb.feed.leader.election-interval-ms:10000}")
+		long electionIntervalMs) {
+		this.bithumbFeedClient = bithumbFeedClient;
+		this.bithumbFeedLeaderLock = bithumbFeedLeaderLock;
+		this.electionIntervalMs = electionIntervalMs;
+	}
+
+	@PostConstruct
+	public void validateLeaderScheduleConfiguration() {
+		long lockTtlMs = bithumbFeedLeaderLock.lockTtlSeconds() * 1000;
+		if (lockTtlMs <= 0 || electionIntervalMs <= 0) {
+			throw new IllegalStateException(
+				"bithumb.feed.leader.lock-ttl-seconds·election-interval-ms는 모두 양수여야 한다.");
+		}
+		if (lockTtlMs < electionIntervalMs * 2) {
+			throw new IllegalStateException(
+				"bithumb.feed.leader.lock-ttl-seconds(" + lockTtlMs + "ms)는 election-interval-ms("
+					+ electionIntervalMs + "ms)의 2배 이상이어야 한다 — 그렇지 않으면 한 번의 갱신 지연만으로도 "
+					+ "리더 자리가 TTL 만료로 넘어갈 수 있다.");
 		}
 	}
 
+	@Scheduled(fixedRateString = "${bithumb.feed.leader.election-interval-ms:10000}")
+	public synchronized void electLeader() {
+		if (leaderToken == null) {
+			tryBecomeLeader();
+		} else {
+			renewOrStepDown();
+		}
+	}
+
+	public synchronized boolean isLeader() {
+		return leaderToken != null;
+	}
+
 	@PreDestroy
-	public void stopFeed() {
-		log.info("빗썸 시세 피드 종료");
+	public synchronized void stopFeed() {
+		String token = leaderToken;
+		if (token == null) {
+			return;
+		}
+		leaderToken = null;
+		log.info("빗썸 시세 피드 종료 — 리더 락을 즉시 해제한다.");
 		bithumbFeedClient.stop();
+		bithumbFeedLeaderLock.unlock(token);
+	}
+
+	private void tryBecomeLeader() {
+		Optional<String> token = bithumbFeedLeaderLock.tryLock();
+		if (token.isEmpty()) {
+			return;
+		}
+		String acquiredToken = token.get();
+		try {
+			bithumbFeedClient.start(acquiredToken);
+			leaderToken = acquiredToken;
+			log.info("빗썸 시세 피드 리더로 선출됐다 — 연결을 시작했다.");
+		} catch (Exception e) {
+			log.error("빗썸 시세 피드 시작 실패 — 리더 자리를 내려놓는다.", e);
+			bithumbFeedLeaderLock.unlock(acquiredToken);
+		}
+	}
+
+	private void renewOrStepDown() {
+		if (bithumbFeedLeaderLock.renew(leaderToken)) {
+			return;
+		}
+		log.warn("빗썸 시세 피드 리더 갱신 실패 — 다른 인스턴스로 넘어가 팔로워로 전환한다.");
+		bithumbFeedClient.stepDown();
+		leaderToken = null;
 	}
 }

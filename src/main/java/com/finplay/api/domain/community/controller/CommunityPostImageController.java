@@ -1,4 +1,3 @@
-// 커뮤니티 게시물 첨부 이미지의 업로드·다운로드 요청을 처리하는 컨트롤러
 package com.finplay.api.domain.community.controller;
 
 import com.finplay.api.domain.auth.token.AuthenticatedUser;
@@ -6,6 +5,7 @@ import com.finplay.api.domain.community.dto.response.CommunityPostImageFileRespo
 import com.finplay.api.domain.community.dto.response.CommunityPostImageResponse;
 import com.finplay.api.domain.community.service.CommunityPostImageService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 @RestController
+@Profile("!prod | web")
 @RequestMapping("/api/community/posts/images")
 @RequiredArgsConstructor
 public class CommunityPostImageController {

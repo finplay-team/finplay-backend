@@ -1,4 +1,3 @@
-// OAuth 공급자를 선택하고 state와 인가 URI 생성을 조합한다.
 package com.finplay.api.domain.auth.service;
 
 import com.finplay.api.domain.auth.oauth.OAuthAuthorizationResult;
@@ -11,9 +10,11 @@ import com.finplay.api.global.exception.ErrorCode;
 import java.net.URI;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 @Service
+@Profile("!prod | web")
 @RequiredArgsConstructor
 public class OAuthAuthorizationService {
 

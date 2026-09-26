@@ -59,3 +59,12 @@ replay_pid*.log
 
 ### 커뮤니티 게시물 이미지 로컬 저장 디렉터리 (COM-006, 이슈 #248)
 /data/
+
+### Terraform (infra/terraform/, ADR-0030) — state에 DB 비밀번호가 평문으로 남는다.
+### .terraform.lock.hcl은 커밋 대상이다(provider 버전 고정 — package-lock.json과 같은 역할).
+infra/terraform/.terraform/
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.*
+infra/terraform/terraform.tfvars
+infra/terraform/*.tfplan
+infra/terraform/tfplan

@@ -1,4 +1,3 @@
-// 코인 요약·브리핑 매시 배치의 대상 선정과 실패 격리를 검증하는 단위 테스트다.
 package com.finplay.api.domain.feedback.service;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -22,11 +21,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
-// 이 클래스는 오케스트레이션만 한다 — 재생성 판정·UPSERT·범위는 각 서비스의 단위 테스트와
-// CryptoFeedbackBatchIntegrationTest가 맡는다. 여기서는 "누구를 부르고, 하나가 터지면 어떻게 되는가"만 본다.
-//
-// 격리 검증은 메서드 경계를 spy로 갈아끼우지 않고 본문이 실제로 부르는 협력자를 특정 종목에서만 던지게 한다
-// (FeedbackBatchServiceTest의 continuesWithOtherInstrumentsWhenDetectionThrows와 같은 형태).
 class CryptoFeedbackBatchServiceTest {
 
 	private final InstrumentService instrumentService = mock(InstrumentService.class);
@@ -35,12 +29,14 @@ class CryptoFeedbackBatchServiceTest {
 
 	private final MarketBriefingService marketBriefingService = mock(MarketBriefingService.class);
 
+	private final FeedbackBatchLock feedbackBatchLock = mock(FeedbackBatchLock.class);
+
 	private final Instrument bitcoin = crypto(1L, "BTC", "비트코인");
 
 	private final Instrument ethereum = crypto(2L, "ETH", "이더리움");
 
 	private final CryptoFeedbackBatchService service = new CryptoFeedbackBatchService(
-		instrumentService, instrumentNewsSummaryService, marketBriefingService);
+		instrumentService, instrumentNewsSummaryService, marketBriefingService, feedbackBatchLock);
 
 	private static Instrument crypto(Long id, String symbol, String name) {
 		Instrument instrument = Instrument.create(
@@ -51,6 +47,7 @@ class CryptoFeedbackBatchServiceTest {
 
 	@BeforeEach
 	void setUp() {
+		when(feedbackBatchLock.tryLock(any(), any())).thenReturn(Optional.of("token"));
 		when(instrumentService.getRealInstrumentEntities(Market.CRYPTO))
 			.thenReturn(List.of(bitcoin, ethereum));
 		when(instrumentNewsSummaryService.refreshCryptoSummary(any()))
@@ -69,7 +66,6 @@ class CryptoFeedbackBatchServiceTest {
 		verify(marketBriefingService).refreshCryptoBriefing();
 	}
 
-	// 주식 종목을 함께 돌리면 코인 규칙(UPSERT·ROLLING_24H)이 주식 행에 적용된다 — 배치 ⑤가 깨진다.
 	@Test
 	@DisplayName("주식 종목은 대상이 아니다 — 코인만 조회한다")
 	void neverTouchesStockInstruments() {
@@ -79,8 +75,6 @@ class CryptoFeedbackBatchServiceTest {
 		verify(instrumentService, never()).getRealInstrumentEntities(Market.STOCK);
 	}
 
-	// 코인은 재생 시간축이 없어 주식의 READY 확인이 성립하지 않는다 — 세션을 보면 재생세션이 없는 날
-	// 코인 갱신이 통째로 멈춘다.
 	@Test
 	@DisplayName("주식 경로의 배치를 부르지 않는다")
 	void neverDelegatesToTheStockBatchPath() {
@@ -90,8 +84,33 @@ class CryptoFeedbackBatchServiceTest {
 		verify(marketBriefingService, never()).generateStockBriefing(any());
 	}
 
-	// 매시 도는 배치라 한 종목의 LLM 호출 실패는 드문 일이 아니다. 격리가 없으면 그 시각 갱신이 통째로
-	// 날아가고 다음 시각까지 화면이 낡은 채로 남는다 — 예외도 없이 로그 한 줄만 남는다.
+	@Test
+	@DisplayName("코인 피드백 락을 얻지 못하면 종목 조회와 LLM 호출을 시작하지 않는다")
+	void skipsCryptoFeedbackWhenLockIsNotAcquired() {
+		when(feedbackBatchLock.tryLock(
+			FeedbackBatchLock.Batch.CRYPTO_FEEDBACK, FeedbackBatchLock.SCHEDULED_SCOPE))
+			.thenReturn(Optional.empty());
+
+		service.refreshCryptoFeedback();
+
+		verify(instrumentService, never()).getRealInstrumentEntities(any());
+		verify(instrumentNewsSummaryService, never()).refreshCryptoSummary(any());
+		verify(marketBriefingService, never()).refreshCryptoBriefing();
+	}
+
+	@Test
+	@DisplayName("코인 종목 조회에서 예외가 나도 코인 피드백 락을 해제한다")
+	void unlocksCryptoFeedbackWhenInstrumentQueryFails() {
+		when(instrumentService.getRealInstrumentEntities(Market.CRYPTO))
+			.thenThrow(new IllegalStateException("instrument query failed"));
+
+		assertThatCode(() -> service.refreshCryptoFeedback())
+			.isInstanceOf(IllegalStateException.class);
+
+		verify(feedbackBatchLock).unlock(
+			FeedbackBatchLock.Batch.CRYPTO_FEEDBACK, FeedbackBatchLock.SCHEDULED_SCOPE, "token");
+	}
+
 	@Test
 	@DisplayName("한 종목의 요약 갱신이 실패해도 나머지 종목과 브리핑이 계속된다")
 	void continuesWithOtherInstrumentsAndTheBriefingWhenOneSummaryThrows() {
@@ -104,7 +123,6 @@ class CryptoFeedbackBatchServiceTest {
 		verify(marketBriefingService).refreshCryptoBriefing();
 	}
 
-	// 브리핑은 호출 1건이라 요약과 분리해 격리한다 — 순서상 마지막이라 여기서 던지면 배치가 예외로 끝난다.
 	@Test
 	@DisplayName("브리핑 갱신이 실패해도 배치가 정상 종료하고 요약은 이미 갱신돼 있다")
 	void finishesNormallyWhenTheBriefingRefreshThrows() {
@@ -117,7 +135,6 @@ class CryptoFeedbackBatchServiceTest {
 		verify(instrumentNewsSummaryService).refreshCryptoSummary(ethereum);
 	}
 
-	// 새 기사가 없어 empty()가 오는 것이 정상 경로다(배치 ⑩) — 그때도 브리핑 단계까지 간다.
 	@Test
 	@DisplayName("모든 종목이 empty()를 돌려줘도 배치가 정상 종료한다")
 	void finishesNormallyWhenEveryRefreshReturnsEmpty() {

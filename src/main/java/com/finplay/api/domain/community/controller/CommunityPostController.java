@@ -1,4 +1,3 @@
-// 커뮤니티 게시글 생성 요청을 검증하고 인증 사용자 ID로 서비스에 전달하는 컨트롤러
 package com.finplay.api.domain.community.controller;
 
 import com.finplay.api.domain.auth.token.AuthenticatedUser;
@@ -11,6 +10,7 @@ import com.finplay.api.global.exception.BusinessException;
 import com.finplay.api.global.exception.ErrorCode;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@Profile("!prod | web")
 @RequestMapping("/api/community/posts")
 @RequiredArgsConstructor
 public class CommunityPostController {

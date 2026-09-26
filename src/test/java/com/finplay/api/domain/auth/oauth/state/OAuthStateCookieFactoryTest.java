@@ -1,4 +1,3 @@
-// OAuth state 쿠키의 값과 callback 경로별 보안 속성 계약을 검증한다.
 package com.finplay.api.domain.auth.oauth.state;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -119,8 +118,8 @@ class OAuthStateCookieFactoryTest {
 	}
 
 	@ParameterizedTest
-	@ValueSource(strings = {"prod", "oauth-real"})
-	@DisplayName("prod와 oauth-real 프로필에서 secure를 false로 설정하면 컨텍스트 기동에 실패한다")
+	@ValueSource(strings = {"prod,web", "oauth-real"})
+	@DisplayName("prod,web과 oauth-real 프로필에서 secure를 false로 설정하면 컨텍스트 기동에 실패한다")
 	void realOAuthProfileRejectsExplicitlyDisabledSecureAttribute(String profile) {
 		contextRunner
 			.withPropertyValues(

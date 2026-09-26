@@ -1,4 +1,3 @@
-// 실제 네이버 OAuth 인가 코드를 사용자 식별자와 이메일로 교환한다.
 package com.finplay.api.domain.auth.oauth.provider;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -21,7 +20,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 @Component
-@Profile({"prod", "oauth-real"})
+@Profile("(prod & web) | (!prod & oauth-real)")
 public final class NaverOAuthCallbackProvider implements OAuthCallbackProvider {
 
 	private static final String TOKEN_ENDPOINT = "https://nid.naver.com/oauth2.0/token";

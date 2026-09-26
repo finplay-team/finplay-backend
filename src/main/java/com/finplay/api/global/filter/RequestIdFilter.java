@@ -1,4 +1,3 @@
-// 요청마다 UUID requestId를 생성해 MDC·응답 헤더에 싣는 서블릿 필터
 package com.finplay.api.global.filter;
 
 import jakarta.servlet.FilterChain;
@@ -9,12 +8,13 @@ import java.io.IOException;
 import java.util.UUID;
 import org.slf4j.MDC;
 import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterProperties;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-// Security 필터체인보다 먼저 실행되어야 401·403 응답에도 requestId가 채워진다.
 @Component
+@Profile("!prod | web")
 @Order(SecurityFilterProperties.DEFAULT_FILTER_ORDER - 1)
 public class RequestIdFilter extends OncePerRequestFilter {
 

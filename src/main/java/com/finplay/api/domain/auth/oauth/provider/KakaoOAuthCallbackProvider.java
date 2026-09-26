@@ -1,4 +1,3 @@
-// 실제 카카오 OAuth 인가 코드를 사용자 식별자와 이메일로 교환한다.
 package com.finplay.api.domain.auth.oauth.provider;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -21,7 +20,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 @Component
-@Profile({"prod", "oauth-real"})
+@Profile("(prod & web) | (!prod & oauth-real)")
 public final class KakaoOAuthCallbackProvider implements OAuthCallbackProvider {
 
 	private static final String TOKEN_ENDPOINT = "https://kauth.kakao.com/oauth/token";

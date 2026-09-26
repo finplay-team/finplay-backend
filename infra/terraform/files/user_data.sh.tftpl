@@ -1,0 +1,32 @@
+#!/bin/bash
+# ${role} 인스턴스 부트스트랩. Amazon Linux 2023 (arm64) 기준.
+set -euo pipefail
+
+dnf install -y aws-cli amazon-ssm-agent
+
+systemctl enable --now amazon-ssm-agent
+
+mkdir -p /home/ec2-user/finplay /opt/finplay
+
+cat <<'REFRESH_ENV_EOF' > /opt/finplay/refresh-env.sh
+${refresh_env_script}
+REFRESH_ENV_EOF
+chmod +x /opt/finplay/refresh-env.sh
+
+/opt/finplay/refresh-env.sh
+
+dnf install -y docker
+
+systemctl enable --now docker
+usermod -aG docker ec2-user
+
+mkdir -p /usr/libexec/docker/cli-plugins
+curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-aarch64" \
+  -o /usr/libexec/docker/cli-plugins/docker-compose
+chmod +x /usr/libexec/docker/cli-plugins/docker-compose
+
+cat <<'COMPOSE_EOF' > /home/ec2-user/finplay/compose.deploy.yaml
+${compose_file_content}
+COMPOSE_EOF
+
+chown -R ec2-user:ec2-user /home/ec2-user/finplay /opt/finplay
